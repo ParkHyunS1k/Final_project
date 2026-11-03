@@ -16,6 +16,7 @@ await build({
     export {GET as sprintGET,POST as sprintPOST} from './app/api/sprint/route';
     export {POST as projectPOST} from './app/api/projects/route';
     export {basicAnalysis,profileInput,validateAnalysis} from './lib/career/profile';
+    export {pdfPageText} from './lib/career/pdf-text';
     export {recommendRoles} from './lib/career/roles'; export {TEMPLATES} from './lib/career/catalog';`,
     resolveDir: process.cwd(),
     loader: 'ts',
@@ -651,5 +652,267 @@ test('개인 기여를 가져오면 목표 비교가 갱신되고 재개·담당
       )
     ).n,
     0,
+  );
+});
+
+test('PDF 글꼴 경계에 공백을 추가하지 않고 원래 공백과 줄바꿈을 보존한다', () => {
+  const items = [
+    '모델',
+    '과 대시보드는',
+    ' ',
+    '팀',
+    '원이',
+    ' ',
+    '구',
+    '현했습니다.',
+  ].map((str) => ({ str, hasEOL: false }));
+  items.at(-1).hasEOL = true;
+  assert.equal(
+    api.pdfPageText([{ type: 'beginMarkedContent' }, ...items]),
+    '모델과 대시보드는 팀원이 구현했습니다.\n',
+  );
+  assert.equal(
+    api.pdfPageText([{ str: 'Python ' }, { str: 'API', hasEOL: true }]),
+    'Python API\n',
+  );
+});
+
+test('지원 제목, 프로필 링크와 팀원 구현을 본인의 수행 근거로 올리지 않는다', () => {
+  const analysis = api.basicAnalysis(
+    api.profileInput(
+      profileBody({
+        resumeText: [
+          'AI 개발 인턴(머신러닝 엔지니어) 지원',
+          'https://github.com/example-person',
+          '대시보드는 팀원이 구현했습니다.',
+          '날짜별 파일을 팀원이 담',
+          '당한 데이터 시각화에 전달했습니다.',
+          '저는 기능 기획과 실행 확인을 맡았습니다.',
+          '프로젝트 적용 기술: Python, SQLite, RAG',
+        ].join('\n'),
+      }),
+    ),
+  );
+  assert.ok(
+    !analysis.skills.some((s) =>
+      ['ml', 'visualization', 'git'].includes(s.skillId),
+    ),
+  );
+  assert.equal(
+    analysis.skills.find((s) => s.skillId === 'planning').level,
+    'applied',
+  );
+  assert.equal(
+    analysis.skills.find((s) => s.skillId === 'python').level,
+    'mentioned',
+  );
+});
+
+test('AI 작성 코드의 수행 범위는 확인 대상으로 남기고 독립 수행과 학습은 구별한다', () => {
+  const analyze = (resumeText) =>
+    api.basicAnalysis(api.profileInput(profileBody({ resumeText })));
+  const assisted = analyze(
+    '본인 담당 코드는 AI가 작성했습니다.\nPython으로 검색 기능을 구현했습니다.\n저는 기능 기획을 맡았습니다.',
+  );
+  assert.equal(
+    assisted.skills.find((s) => s.skillId === 'python').level,
+    'mentioned',
+  );
+  assert.equal(
+    assisted.skills.find((s) => s.skillId === 'planning').level,
+    'applied',
+  );
+  assert.match(assisted.questions[0], /AI가 작성한 코드/);
+  const own = analyze(
+    'Python으로 검색 기능을 구현했습니다.\nGit 브랜치 사용법을 학습했습니다.',
+  );
+  assert.equal(own.skills.find((s) => s.skillId === 'python').level, 'applied');
+  assert.equal(own.skills.find((s) => s.skillId === 'git').level, 'learning');
+});
+
+test('공고의 자격 요건과 우대사항을 구분하고 회사 소개를 필수 요건으로 만들지 않는다', () => {
+  const analysis = api.basicAnalysis(
+    api.profileInput(
+      profileBody({
+        targetPosting: [
+          'RAG와 Docker를 사용하는 회사입니다.',
+          '주요업무',
+          'AWS 배포',
+          '자격요건',
+          'Python 구현 경험',
+          'Git 브랜치 협업',
+          '우대사항',
+          'RAG 경험',
+          'LLM 출력 평가 자동화',
+          '혜택 및 복지',
+          'React 교육 제공',
+        ].join('\n'),
+      }),
+    ),
+  );
+  assert.deepEqual(
+    analysis.requirements.map((r) => [r.skillId, r.importance]),
+    [
+      ['python', 'required'],
+      ['git', 'required'],
+      ['rag', 'preferred'],
+      ['evaluation', 'preferred'],
+    ],
+  );
+});
+
+test('근거 수정은 새 버전을 보존하고 공고 비교와 추천에 반영하며 AI 한도를 쓰지 않는다', async () => {
+  const before = await profile('review-valid', {
+    resumeText:
+      'Python 검색 기능을 실행하고 오류 현상을 확인했습니다.\nRAG 기술을 활용하는 프로젝트에 참여했습니다.',
+    targetPosting: 'Python 경험 필수\nRAG 우대',
+    noExperience: [],
+    learningGoals: [],
+  });
+  const beforeState = await json(await get('review-valid'));
+  assert.equal(
+    beforeState.gaps.find((g) => g.skillId === 'python').status,
+    'partial',
+  );
+  const changed = before.analysis.skills.map((s) =>
+    s.skillId === 'python' ? { ...s, level: 'learning' } : s,
+  );
+  const saved = await json(
+    await post('review-valid', {
+      action: 'reviewProfile',
+      version: 1,
+      skills: changed,
+      requirements: before.analysis.requirements,
+    }),
+  );
+  assert.equal(saved.profile.version, 2);
+  assert.ok(saved.profile.analysis.reviewedAt);
+  assert.ok(
+    !saved.profile.analysis.questions.some((q) => q.includes('Python')),
+  );
+  const afterState = await json(await get('review-valid'));
+  assert.equal(
+    afterState.profile.analysis.skills.find((s) => s.skillId === 'python')
+      .level,
+    'learning',
+  );
+  assert.ok(
+    afterState.recommendations.some((r) => r.strengths.includes('python')),
+  );
+  assert.ok(
+    !beforeState.recommendations.some((r) => r.strengths.includes('python')),
+  );
+  const old = await db.one(
+    'SELECT analysis FROM career_profile_versions WHERE id=?',
+    before.id,
+  );
+  assert.equal(
+    old.analysis.skills.find((s) => s.skillId === 'python').level,
+    'mentioned',
+  );
+  assert.equal(
+    (
+      await db.one(
+        'SELECT count(*) AS n FROM career_ai_quota WHERE user_id=?',
+        'review-valid',
+      )
+    ).n,
+    0,
+  );
+  assert.equal((await json(await get('review-other'))).profile, null);
+});
+
+test('검토 저장은 원문 없는 근거, 중복, 다른 계정, 프로젝트 근거 위조와 오래된 버전을 거부한다', async () => {
+  const p = await profile('review-invalid');
+  const body = {
+    action: 'reviewProfile',
+    version: 1,
+    skills: p.analysis.skills,
+    requirements: p.analysis.requirements,
+  };
+  assert.equal((await post('review-stranger', body)).status, 409);
+  const first = p.analysis.skills[0];
+  for (const skills of [
+    [{ ...first, quote: '이력서에 존재하지 않는 가짜 근거' }],
+    [first, first],
+    [{ ...first, source: 'project', sourceId: 'foreign-project' }],
+    [{ ...first, skillId: 'unknown-skill' }],
+    [{ ...first, level: 'expert' }],
+  ])
+    assert.equal(
+      (await post('review-invalid', { ...body, skills })).status,
+      400,
+    );
+  assert.equal(
+    (
+      await post('review-invalid', {
+        ...body,
+        requirements: [
+          {
+            skillId: 'python',
+            quote: '공고에 없는 근거',
+            importance: 'required',
+          },
+        ],
+      })
+    ).status,
+    400,
+  );
+  // Invalid edits release their reservation, so a valid request can immediately succeed.
+  await json(await post('review-invalid', body));
+  assert.equal((await post('review-invalid', body)).status, 409);
+  assert.equal((await json(await get('review-invalid'))).profile.version, 2);
+});
+
+test('검토 동시 저장은 하나만 확정하고 미경험이나 타인의 수행은 적용 근거로 올리지 않는다', async () => {
+  const p = await profile('review-race', {
+    resumeText:
+      'Python 경험이 없습니다.\nRAG 기능은 팀원이 구현했습니다.\n기능 기획에 참여했습니다.',
+  });
+  const body = {
+    action: 'reviewProfile',
+    version: 1,
+    skills: p.analysis.skills,
+    requirements: p.analysis.requirements,
+  };
+  for (const quote of [
+    'Python 경험이 없습니다.',
+    'RAG 기능은 팀원이 구현했습니다.',
+  ])
+    assert.equal(
+      (
+        await post('review-race', {
+          ...body,
+          skills: [{ skillId: 'python', level: 'applied', quote }],
+        })
+      ).status,
+      400,
+    );
+  const responses = await Promise.all([
+    post('review-race', body),
+    post('review-race', body),
+  ]);
+  assert.deepEqual(
+    responses.map((r) => r.status).sort((a, b) => a - b),
+    [200, 409],
+  );
+});
+
+test('프로필 주소의 GitHub 표시는 협업 근거가 아니며 종료 예정 교육의 현재 학습은 보존한다', () => {
+  const analysis = api.basicAnalysis(
+    api.profileInput(
+      profileBody({
+        resumeText: [
+          'GitHub github.com/example-person | 포트폴리오 example.test',
+          '2026년 과정(종료 예정), 수강 중. 머신러닝 응용 학습.',
+          'React 학습은 다음 달 시작할 예정입니다.',
+        ].join('\n'),
+      }),
+    ),
+  );
+  assert.ok(!analysis.skills.some((s) => ['git', 'react'].includes(s.skillId)));
+  assert.equal(
+    analysis.skills.find((s) => s.skillId === 'ml').level,
+    'learning',
   );
 });

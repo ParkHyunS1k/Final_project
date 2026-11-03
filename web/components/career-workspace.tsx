@@ -19,6 +19,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
+import { CareerAnalysisReview } from './career-analysis-review';
 import { apiFetch, signInWithGoogle } from '@/lib/supabase-browser';
 import {
   SKILLS,
@@ -33,6 +34,7 @@ import type {
   Profile,
   ProfileInput,
   SkillEvidence,
+  Requirement,
   gapsFor,
   recommendations,
 } from '@/lib/career/profile';
@@ -313,6 +315,21 @@ export function CareerWorkspace({
       setNotice(
         '근거와 추천을 저장했습니다. 프로젝트 추천에서 다음 경험을 골라보세요.',
       );
+    });
+  }
+  async function saveReview(
+    skills: SkillEvidence[],
+    requirements: Requirement[],
+  ) {
+    await act(async () => {
+      await request('/api/career', {
+        action: 'reviewProfile',
+        version,
+        skills,
+        requirements,
+      });
+      hydrate(await request<Personal>('/api/career'));
+      setNotice('검토한 근거를 새 버전으로 저장하고 추천을 갱신했습니다.');
     });
   }
   const shareable = data
@@ -629,6 +646,9 @@ export function CareerWorkspace({
                         ? 'AI 분석 · 원문 근거 확인'
                         : '기본 추출 · 키워드 기반'}
                     </span>
+                    {profile.analysis.reviewedAt && (
+                      <span className="cf-chip">검토 수정 반영</span>
+                    )}
                     <div className="cf-evidence-list">
                       {profile.analysis.skills.map((s) => (
                         <article key={s.skillId}>
@@ -652,6 +672,19 @@ export function CareerWorkspace({
                         </p>
                       )}
                     </div>
+                    <CareerAnalysisReview
+                      key={profile.id}
+                      profile={profile}
+                      disabled={busy}
+                      unsaved={(
+                        Object.keys(EMPTY) as (keyof ProfileInput)[]
+                      ).some(
+                        (key) =>
+                          JSON.stringify(form[key]) !==
+                          JSON.stringify(profile[key]),
+                      )}
+                      onSave={saveReview}
+                    />
                     {!!profile.analysis.questions.length && (
                       <div className="cf-callout">
                         <strong>추가로 확인하면 좋아요</strong>

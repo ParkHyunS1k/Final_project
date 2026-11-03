@@ -9,6 +9,7 @@ import {
   basicAnalysis,
   gapsFor,
   recommendations,
+  reviewAnalysis,
 } from '@/lib/career/profile';
 import { analyzeWithAI, careerAiConfigured } from '@/lib/career/model';
 import {
@@ -143,6 +144,23 @@ export async function POST(request: Request) {
         return reply({ profile: await saveProfile(claim, input, analysis) });
       } catch (e) {
         await releaseProfileWrite(claim, true);
+        throw e;
+      }
+    }
+    if (b.action === 'reviewProfile') {
+      if (!Number.isInteger(b.version) || Number(b.version) < 1)
+        throw new CareerError('프로필 버전을 확인해주세요.');
+      const claim = await claimProfileWrite(user.id, Number(b.version), false);
+      try {
+        const profile = await readProfile(user.id);
+        if (!profile || profile.version !== Number(b.version))
+          throw new CareerError('최신 프로필을 불러와 다시 검토해주세요.', 409);
+        const analysis = reviewAnalysis(b, profile);
+        return reply({
+          profile: await saveProfile(claim, profileInput(profile), analysis),
+        });
+      } catch (e) {
+        await releaseProfileWrite(claim);
         throw e;
       }
     }
