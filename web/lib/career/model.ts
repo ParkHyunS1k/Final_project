@@ -51,10 +51,10 @@ export function careerAiInfo() {
   if (provider !== 'local')
     return { provider: 'unavailable', model: '', configured: false };
   try {
-    const { model } = localModelConfig();
+    const { model, label } = localModelConfig();
     return {
       provider,
-      model: model.split('/').pop() || '',
+      model: label,
       configured: Boolean(model),
     };
   } catch {

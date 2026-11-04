@@ -202,12 +202,13 @@ def main():
     parser.add_argument("input", type=Path)
     parser.add_argument("--audit", required=True, type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--require-reviewed", action="store_true", help="Enforce all export review and split gates, also for check")
     args = parser.parse_args()
     try:
         rows, vocab = read_rows(args.input), vocabulary()
         audit = json.loads(args.audit.read_text(encoding="utf-8"))
         documents = {d["source_id"]: d for d in audit["documents"]}
-        stats = validate(rows, vocab, documents, for_export=args.action == "export")
+        stats = validate(rows, vocab, documents, for_export=args.action == "export" or args.require_reviewed)
         if args.action != "check":
             if args.output is None:
                 raise DatasetError("--output is required for review/export")

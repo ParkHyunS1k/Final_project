@@ -4,6 +4,7 @@ import { sourceLines, resolveLocalEvidence } from './local-evidence';
 
 export function localModelConfig() {
   const model = process.env.CAREERFLOW_LOCAL_MODEL?.trim() || '';
+  const adapter = process.env.CAREERFLOW_LOCAL_ADAPTER?.trim() || '';
   const base = new URL(
     process.env.CAREERFLOW_LOCAL_URL || 'http://127.0.0.1:8089',
   );
@@ -25,7 +26,16 @@ export function localModelConfig() {
       '로컬 모델은 이 Mac에서 실행한 앱에 연결해주세요.',
       503,
     );
-  return { model, url: new URL('/v1/chat/completions', base).href };
+  if (adapter && model === 'default_model')
+    throw new CareerError(
+      '어댑터를 사용할 때는 기본 별칭 대신 실제 로컬 모델 경로를 설정해주세요.',
+      503,
+    );
+  const label = model
+    ? (model.split('/').pop() || model) +
+      (adapter ? ` + ${adapter.split('/').filter(Boolean).pop()}` : '')
+    : '';
+  return { model, adapter, label, url: new URL('/v1/chat/completions', base).href };
 }
 
 export const LOCAL_SYSTEM = `Extract evidence from a Korean resume. Return only a JSON object with exactly summary, skills, questions.
@@ -65,6 +75,11 @@ export async function analyzeLocally(input: ProfileInput) {
         signal,
         body: JSON.stringify({
           model: config.model,
+          // MLX's CLI adapter only follows the default_model alias. Select it
+          // explicitly for resumes; the separately evaluated posting task stays on base.
+          ...(phase === 'resume' && config.adapter
+            ? { adapters: config.adapter }
+            : {}),
           stream: false,
           temperature: 0,
           max_tokens: phase === 'resume' ? 2000 : 1000,
@@ -136,7 +151,7 @@ export async function analyzeLocally(input: ProfileInput) {
       ...analysis,
       engine: {
         provider: 'local' as const,
-        model: config.model.split('/').pop() || config.model,
+        model: config.label,
       },
     };
   } catch (e) {
