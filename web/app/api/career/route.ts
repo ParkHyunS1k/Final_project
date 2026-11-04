@@ -11,7 +11,11 @@ import {
   recommendations,
   reviewAnalysis,
 } from '@/lib/career/profile';
-import { analyzeWithAI, careerAiConfigured } from '@/lib/career/model';
+import {
+  analyzeWithAI,
+  careerAiConfigured,
+  careerAiInfo,
+} from '@/lib/career/model';
 import {
   claimProfileWrite,
   releaseProfileWrite,
@@ -30,7 +34,7 @@ import {
 } from '@/lib/career/store';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 90;
+export const maxDuration = 240;
 function reply(value: unknown, status = 200) {
   return Response.json(value, {
     status,
@@ -89,6 +93,7 @@ export async function GET(request: Request) {
       roles: ROLES,
       targets: TARGETS,
       aiConfigured: careerAiConfigured(),
+      ai: careerAiInfo(),
       extraSkills: extra,
       gaps: profile ? gapsFor(profile, extra) : [],
       beforeGaps: profile ? gapsFor(profile) : [],
@@ -123,7 +128,7 @@ export async function POST(request: Request) {
       if (b.mode !== 'basic' && b.mode !== 'ai')
         throw new CareerError('분석 방식을 선택해주세요.');
       if (b.mode === 'ai') {
-        if (b.consent !== true)
+        if (careerAiInfo().provider === 'openai' && b.consent !== true)
           throw new CareerError(
             '이력서와 목표 공고를 AI 분석에 보내는 데 동의해주세요.',
           );

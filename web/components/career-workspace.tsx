@@ -49,6 +49,7 @@ type Personal = {
   beforeGaps: ReturnType<typeof gapsFor>;
   recommendations: ReturnType<typeof recommendations>;
   aiConfigured: boolean;
+  ai: { provider: string; model: string; configured: boolean };
 };
 type Team = Wire<Omit<Awaited<ReturnType<typeof teamState>>, '_team'>>;
 type Section = 'profile' | 'recommend' | 'team' | 'experience';
@@ -165,6 +166,12 @@ export function CareerWorkspace({
   const hydrate = useCallback(
     (value: Personal) => {
       setData(value);
+      if (
+        !prefillApplied.current &&
+        value.ai?.provider === 'local' &&
+        value.ai.configured
+      )
+        setMode('ai');
       if (prefillApplied.current) {
         if (value.profile) {
           setForm(value.profile);
@@ -601,16 +608,22 @@ export function CareerWorkspace({
                         setMode(e.target.value as 'ai' | 'basic')
                       }
                     >
-                      <option value="basic">
-                        기본 근거 추출 · 외부 AI 전송 없음
-                      </option>
+                      <option value="basic">기본 근거 추출, 규칙 기반</option>
                       <option value="ai" disabled={!data.aiConfigured}>
-                        AI 근거 분석
-                        {!data.aiConfigured ? ' · 서버 설정 필요' : ''}
+                        {data.ai?.provider === 'local'
+                          ? '로컬 LLM 분석'
+                          : '외부 AI 분석'}
+                        {!data.aiConfigured ? ', 서버 설정 필요' : ''}
                       </option>
                     </select>
                   </label>
-                  {mode === 'ai' && (
+                  {mode === 'ai' && data.ai?.provider === 'local' && (
+                    <p className="cf-help">
+                      이 Mac의 {data.ai.model || '로컬 모델'}에서 분석합니다.
+                      이력서와 공고는 외부 AI로 전송하지 않습니다.
+                    </p>
+                  )}
+                  {mode === 'ai' && data.ai?.provider === 'openai' && (
                     <label className="cf-agreement">
                       <input
                         type="checkbox"
@@ -624,7 +637,12 @@ export function CareerWorkspace({
                   )}
                   <button
                     className="btn primary wide"
-                    disabled={busy || (mode === 'ai' && !consent)}
+                    disabled={
+                      busy ||
+                      (mode === 'ai' &&
+                        (!data.aiConfigured ||
+                          (data.ai?.provider === 'openai' && !consent)))
+                    }
                   >
                     <Sparkles size={16} />
                     {busy
@@ -641,10 +659,18 @@ export function CareerWorkspace({
                 {profile ? (
                   <>
                     <p>{profile.analysis.summary}</p>
+                    {profile.analysis.engine?.provider === 'local' && (
+                      <p className="cf-help">
+                        로컬 모델의 분석 초안입니다. 실제 담당 범위와 공고 요건을
+                        원문으로 확인해주세요.
+                      </p>
+                    )}
                     <span className="cf-chip">
                       {profile.analysis.mode === 'ai'
-                        ? 'AI 분석 · 원문 근거 확인'
-                        : '기본 추출 · 키워드 기반'}
+                        ? profile.analysis.engine?.provider === 'local'
+                          ? `로컬 LLM 분석, ${profile.analysis.engine.model}`
+                          : '외부 AI 분석, 원문 근거 확인'
+                        : '기본 추출, 키워드 기반'}
                     </span>
                     {profile.analysis.reviewedAt && (
                       <span className="cf-chip">검토 수정 반영</span>

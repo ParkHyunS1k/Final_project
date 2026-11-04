@@ -1,5 +1,6 @@
 import { SKILLS } from './catalog';
 import { CareerError, validateAnalysis, type ProfileInput } from './profile';
+import { analyzeLocally, localModelConfig } from './local-model';
 
 const schema = {
   type: 'object',
@@ -36,10 +37,38 @@ const schema = {
     questions: { type: 'array', items: { type: 'string' } },
   },
 };
+export function careerAiInfo() {
+  const provider = process.env.CAREERFLOW_AI_PROVIDER || 'local';
+  if (provider === 'openai')
+    return {
+      provider,
+      model:
+        process.env.CAREERFLOW_MODEL ||
+        process.env.PROJECTMATE_MODEL ||
+        'gpt-6.1-sol',
+      configured: Boolean(process.env.OPENAI_API_KEY),
+    };
+  if (provider !== 'local')
+    return { provider: 'unavailable', model: '', configured: false };
+  try {
+    const { model } = localModelConfig();
+    return {
+      provider,
+      model: model.split('/').pop() || '',
+      configured: Boolean(model),
+    };
+  } catch {
+    return { provider, model: '', configured: false };
+  }
+}
 export function careerAiConfigured() {
-  return Boolean(process.env.OPENAI_API_KEY);
+  return careerAiInfo().configured;
 }
 export async function analyzeWithAI(input: ProfileInput) {
+  const provider = process.env.CAREERFLOW_AI_PROVIDER || 'local';
+  if (provider === 'local') return analyzeLocally(input);
+  if (provider !== 'openai')
+    throw new CareerError('AI 분석 제공자 설정을 확인해주세요.', 503);
   const key = process.env.OPENAI_API_KEY;
   if (!key)
     throw new CareerError(
@@ -110,7 +139,10 @@ export async function analyzeWithAI(input: ProfileInput) {
       .filter((v: { type: string }) => v.type === 'output_text')
       .map((v: { text: string }) => v.text)
       .join('');
-    return validateAnalysis(JSON.parse(text), input);
+    return {
+      ...validateAnalysis(JSON.parse(text), input),
+      engine: { provider: 'openai' as const, model },
+    };
   } catch (e) {
     if (e instanceof CareerError) throw e;
     throw new CareerError(

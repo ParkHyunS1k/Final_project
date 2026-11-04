@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { setupTestDb } from './helpers/pg-db.mjs';
 process.env.AUTH_DEV_HEADERS = '1';
+process.env.CAREERFLOW_AI_PROVIDER = 'openai';
 delete process.env.OPENAI_API_KEY;
 const db = await setupTestDb();
 const out = join(mkdtempSync(join(tmpdir(), 'career-test-')), 'api.mjs');
@@ -17,6 +18,7 @@ await build({
     export {POST as projectPOST} from './app/api/projects/route';
     export {basicAnalysis,profileInput,validateAnalysis} from './lib/career/profile';
     export {pdfPageText} from './lib/career/pdf-text';
+    export {sourceLines,resolveLocalEvidence} from './lib/career/local-evidence';
     export {recommendRoles} from './lib/career/roles'; export {TEMPLATES} from './lib/career/catalog';`,
     resolveDir: process.cwd(),
     loader: 'ts',
@@ -915,4 +917,217 @@ test('프로필 주소의 GitHub 표시는 협업 근거가 아니며 종료 예
     analysis.skills.find((s) => s.skillId === 'ml').level,
     'learning',
   );
+});
+
+test('로컬 모델을 기본으로 선택하고 외부 키가 있어도 이력서를 로컬 서버로만 전송한다', async () => {
+  const original = globalThis.fetch;
+  delete process.env.CAREERFLOW_AI_PROVIDER;
+  process.env.CAREERFLOW_LOCAL_MODEL = 'models/synthetic-local';
+  process.env.CAREERFLOW_LOCAL_URL = 'http://127.0.0.1:8089';
+  process.env.OPENAI_API_KEY = 'must-not-be-transmitted';
+  try {
+    let calls = 0;
+    globalThis.fetch = async (url, init) => {
+      calls++;
+      assert.equal(url, 'http://127.0.0.1:8089/v1/chat/completions');
+      assert.equal(init.headers.Authorization, undefined);
+      assert.equal(init.redirect, 'error');
+      const body = JSON.parse(init.body);
+      assert.equal(body.model, 'models/synthetic-local');
+      assert.ok(body.messages[1].content.includes('Python'));
+      const isPosting = !('resume' in JSON.parse(body.messages[1].content));
+      return Response.json({
+        choices: [
+          {
+            finish_reason: 'stop',
+            message: {
+              content: JSON.stringify({
+                summary: isPosting
+                  ? '공고를 지원자의 경력으로 오인한 요약'
+                  : '직접 구현한 근거입니다.',
+                skills: isPosting
+                  ? [
+                      {
+                        skillId: 'docker',
+                        level: 'applied',
+                        startLine: 999,
+                        endLine: 999,
+                      },
+                    ]
+                  : [
+                      {
+                        skillId: 'python',
+                        level: 'applied',
+                        startLine: 1,
+                        endLine: 1,
+                      },
+                    ],
+                requirements: isPosting
+                  ? [
+                      {
+                        skillId: 'python',
+                        importance: 'required',
+                        startLine: 1,
+                        endLine: 1,
+                      },
+                    ]
+                  : [],
+                questions: [],
+              }),
+            },
+          },
+        ],
+      });
+    };
+    const result = await profile('local-success', {
+      mode: 'ai',
+      consent: false,
+    });
+    assert.equal(result.analysis.engine.provider, 'local');
+    assert.equal(result.analysis.engine.model, 'synthetic-local');
+    assert.equal(calls, 2);
+    assert.equal(result.analysis.requirements[0].skillId, 'python');
+    assert.deepEqual(
+      result.analysis.skills.map((s) => s.skillId),
+      ['python'],
+    );
+    assert.doesNotMatch(result.analysis.summary, /공고를 지원자/);
+    const state = await json(await get('local-success'));
+    assert.equal(state.ai.provider, 'local');
+    assert.equal(state.ai.configured, true);
+    assert.doesNotMatch(JSON.stringify(state), /must-not-be-transmitted/);
+  } finally {
+    globalThis.fetch = original;
+    process.env.CAREERFLOW_AI_PROVIDER = 'openai';
+    delete process.env.CAREERFLOW_LOCAL_MODEL;
+    delete process.env.CAREERFLOW_LOCAL_URL;
+    delete process.env.OPENAI_API_KEY;
+  }
+});
+
+test('로컬 모델의 외부 주소, 잘린 출력, 가짜 근거와 연결 실패는 저장하지 않고 외부로 재시도하지 않는다', async () => {
+  const original = globalThis.fetch;
+  process.env.CAREERFLOW_AI_PROVIDER = 'local';
+  process.env.CAREERFLOW_LOCAL_MODEL = 'models/synthetic-local';
+  process.env.OPENAI_API_KEY = 'unused-external-key';
+  try {
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      throw new Error('PRIVATE_LOCAL_DETAILS');
+    };
+    for (const url of [
+      'https://example.test',
+      'http://localhost:8089',
+      'http://127.0.0.1:8089/remote',
+      'http://127.0.0.1:8089/?key=secret',
+    ]) {
+      process.env.CAREERFLOW_LOCAL_URL = url;
+      assert.equal(
+        (
+          await post(
+            'bad-local-address',
+            profileBody({ mode: 'ai', consent: true }),
+          )
+        ).status,
+        503,
+      );
+    }
+    assert.equal(calls, 0);
+    process.env.CAREERFLOW_LOCAL_URL = 'http://127.0.0.1:8089';
+    let failure = await post('local-connect-fail', profileBody({ mode: 'ai' }));
+    assert.equal(failure.status, 502);
+    assert.doesNotMatch(await failure.text(), /PRIVATE_LOCAL_DETAILS/);
+    assert.equal(calls, 1);
+    assert.equal((await json(await get('local-connect-fail'))).profile, null);
+    assert.equal(
+      (
+        await db.one(
+          'SELECT n FROM career_ai_quota WHERE user_id=?',
+          'local-connect-fail',
+        )
+      ).n,
+      0,
+    );
+    for (const [id, finish, content] of [
+      ['local-truncated', 'length', '{}'],
+      ['local-invalid-json', 'stop', 'not JSON'],
+      [
+        'local-fake-quote',
+        'stop',
+        JSON.stringify({
+          summary: '가짜 근거',
+          skills: [
+            {
+              skillId: 'python',
+              level: 'applied',
+              startLine: 999,
+              endLine: 999,
+            },
+          ],
+          requirements: [],
+          questions: [],
+        }),
+      ],
+    ]) {
+      globalThis.fetch = async () => {
+        calls++;
+        return Response.json({
+          choices: [{ finish_reason: finish, message: { content } }],
+        });
+      };
+      const countBefore = calls;
+      failure = await post(id, profileBody({ mode: 'ai' }));
+      assert.equal(failure.status, 502);
+      assert.equal(calls, countBefore + 1);
+      assert.equal((await json(await get(id))).profile, null);
+    }
+  } finally {
+    globalThis.fetch = original;
+    process.env.CAREERFLOW_AI_PROVIDER = 'openai';
+    delete process.env.CAREERFLOW_LOCAL_MODEL;
+    delete process.env.CAREERFLOW_LOCAL_URL;
+    delete process.env.OPENAI_API_KEY;
+  }
+});
+
+test('로컬 모델이 선택한 줄 범위는 원문 그대로 복원하고 잘못된 범위를 거부한다', () => {
+  const input = api.profileInput(
+    profileBody({
+      resumeText:
+        'Python으로 검색 기능을 구현했습니다.\n\n원문을 확인하며\n테스트를 작성했습니다.',
+    }),
+  );
+  const raw = {
+    summary: '원문 범위 검사',
+    skills: [
+      { skillId: 'testing', level: 'applied', startLine: 2, endLine: 3 },
+    ],
+    requirements: [],
+    questions: [],
+  };
+  assert.equal(
+    api.resolveLocalEvidence(raw, input).skills[0].quote,
+    '원문을 확인하며\n테스트를 작성했습니다.',
+  );
+  for (const [startLine, endLine] of [
+    [0, 1],
+    [2, 1],
+    [1, 9],
+    ['1', 1],
+    [1.1, 2],
+  ])
+    assert.throws(
+      () =>
+        api.resolveLocalEvidence(
+          { ...raw, skills: [{ ...raw.skills[0], startLine, endLine }] },
+          input,
+        ),
+      /원문 범위/,
+    );
+  const long = '가'.repeat(500);
+  const lines = api.sourceLines(long);
+  assert.equal(lines.length, 3);
+  assert.equal(lines.map((s) => s.text).join(''), long);
+  assert.deepEqual(api.sourceLines('\n\n'), []);
 });

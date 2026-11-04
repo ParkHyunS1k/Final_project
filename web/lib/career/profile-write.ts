@@ -24,10 +24,10 @@ export async function claimProfileWrite(
         'INSERT INTO career_profile_writes(user_id) VALUES(?) ON CONFLICT(user_id) DO UPDATE SET user_id=excluded.user_id',
       )
       .bind(userId),
-    // 모델 제한 55초와 라우트 제한 90초보다 길게 두고, 중단된 요청은 자동 만료한다.
+    // 로컬 추론 제한 180초와 라우트 제한 240초보다 길게 두고 중단된 요청은 만료한다.
     db
       .prepare(`UPDATE career_profile_writes
-      SET claim_id=?, expires_at=clock_timestamp()+interval '120 seconds'
+      SET claim_id=?, expires_at=clock_timestamp()+interval '300 seconds'
       WHERE user_id=? AND (claim_id IS NULL OR expires_at<=clock_timestamp())
       AND COALESCE((SELECT version FROM career_profiles WHERE user_id=?),0)=?`)
       .bind(id, userId, userId, version),

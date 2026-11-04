@@ -31,6 +31,7 @@ export type Requirement = {
 export type Analysis = {
   mode: 'basic' | 'ai';
   reviewedAt?: string;
+  engine?: { provider: 'local' | 'openai'; model: string };
   summary: string;
   skills: SkillEvidence[];
   requirements: Requirement[];
