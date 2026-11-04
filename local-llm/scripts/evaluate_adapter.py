@@ -16,6 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def score_response(text, expected, request, finish_reason="stop"):
+    if "technologies" in expected:
+        from context_contract import score_context_response
+        return score_context_response(text, expected, request, finish_reason)
     gold = {(s["skillId"], s["level"]): s for s in expected["skills"]}
     predicted, grounded, errors = set(), set(), []
     valid = False
@@ -50,12 +53,13 @@ def score_response(text, expected, request, finish_reason="stop"):
         # Invalid JSON is rejected by the app, so it contributes no usable labels.
         predicted, grounded = set(), set()
     correct = predicted & gold.keys()
-    return {
+    result = {
         "schema_valid": valid, "exact_skill_level_set": valid and predicted == gold.keys(),
         "tp": len(correct), "fp": len(predicted - gold.keys()), "fn": len(gold.keys() - predicted),
         "grounded_tp": len(grounded), "expected_count": len(gold),
         "errors": errors, "extra": sorted(predicted - gold.keys()), "missing": sorted(gold.keys() - predicted),
     }
+    return result
 
 
 def summarize(records):
@@ -63,7 +67,7 @@ def summarize(records):
     tp, fp, fn = (sum(s[k] for s in scores) for k in ("tp", "fp", "fn"))
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
-    return {
+    result = {
         "examples": len(scores), "schema_valid": sum(s["schema_valid"] for s in scores),
         "exact_skill_level_sets": sum(s["exact_skill_level_set"] for s in scores),
         "tp": tp, "fp": fp, "fn": fn, "precision": precision, "recall": recall,
@@ -71,6 +75,12 @@ def summarize(records):
         "grounded_tp": sum(s["grounded_tp"] for s in scores),
         "seconds": sum(r["seconds"] for r in records),
     }
+    if scores and "technology_tp" in scores[0]:
+        a, b, c = (sum(s["technology_" + k] for s in scores) for k in ("tp", "fp", "fn"))
+        result["technologies"] = {"tp": a, "fp": b, "fn": c, "f1": 2*a/(2*a+b+c) if 2*a+b+c else 0.0,
+                                  "exact_sets": sum(s["exact_technology_level_set"] for s in scores),
+                                  "grounded_tp": sum(s["technology_grounded_tp"] for s in scores)}
+    return result
 
 
 def main():

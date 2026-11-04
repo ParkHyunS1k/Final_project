@@ -25,7 +25,7 @@ class JsonAnswerDataset:
             raise ValueError("Expected one system/user/assistant example")
         answer = messages[-1]["content"]
         decoded = json.loads(answer)
-        if not isinstance(decoded, dict) or set(decoded) != {"summary", "skills", "questions"}:
+        if not isinstance(decoded, dict) or set(decoded) not in ({"summary", "skills", "questions"}, {"summary", "skills", "technologies", "questions"}):
             raise ValueError("Expected a resume JSON answer")
         # Rendering a completed chat can insert an empty reasoning block in the
         # pinned community template. Reuse the actual inference prefix instead.
@@ -56,8 +56,8 @@ def main():
     from evaluate_adapter import score_response
 
     cfg = {**CONFIG_DEFAULTS, **yaml.safe_load(args.config.read_text())}
-    if cfg.get("completion_format") != "plain-json-v1" or not cfg["mask_prompt"]:
-        parser.error("This runner requires plain-json-v1 and answer-only loss")
+    if cfg.get("completion_format") not in ("plain-json-v1", "context-json-v2") or not cfg["mask_prompt"]:
+        parser.error("This runner requires a JSON contract and answer-only loss")
     model_path, data, output = (Path(cfg[k]).resolve() for k in ("model", "data", "adapter_path"))
     if not model_path.is_dir() or not data.is_relative_to(ROOT / "data") or not output.is_relative_to(ROOT / "adapters"):
         parser.error("Use local model, data and adapter directories")
@@ -80,7 +80,7 @@ def main():
             assert tokenizer.decode(tokens[offset:-1]) == row["messages"][-1]["content"]
             lengths.append(len(tokens))
     output.mkdir(parents=True, exist_ok=False, mode=0o700)
-    (output / "preflight.json").write_text(json.dumps({"completion_format": "plain-json-v1", "train_examples": len(train), "valid_examples": len(valid), "maximum_tokens": max(lengths), "exact_answer_roundtrip": True}, indent=2))
+    (output / "preflight.json").write_text(json.dumps({"completion_format": cfg["completion_format"], "train_examples": len(train), "valid_examples": len(valid), "maximum_tokens": max(lengths), "exact_answer_roundtrip": True}, indent=2))
 
     class Callback(TrainingCallback):
         def on_train_loss_report(self, info):

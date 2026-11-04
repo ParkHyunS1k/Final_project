@@ -42,10 +42,14 @@ def main():
     config = json.loads((args.checkpoints / "adapter_config.json").read_text())
     model, tokenizer = load(str(args.model.resolve()))
     rows = [json.loads(line) for line in data_bytes.decode().splitlines()]
-    dataset = CacheDataset(JsonAnswerDataset(rows, tokenizer) if config.get("completion_format") == "plain-json-v1" else ChatDataset(rows, tokenizer, mask_prompt=True))
+    source = JsonAnswerDataset(rows, tokenizer) if config.get("completion_format") in ("plain-json-v1", "context-json-v2") else ChatDataset(rows, tokenizer, mask_prompt=True)
+    max_length = config.get("max_seq_length", 2048)
+    if isinstance(source, JsonAnswerDataset):
+        assert all(len(source.process(row)[0]) <= max_length for row in rows), "Refusing to truncate validation data"
+    dataset = CacheDataset(source)
 
     def validation_loss():
-        value = evaluate(model, dataset, batch_size=1, num_batches=-1, max_seq_length=2048)
+        value = evaluate(model, dataset, batch_size=1, num_batches=-1, max_seq_length=max_length)
         if not math.isfinite(value):
             raise ValueError("Non-finite validation loss")
         mx.clear_cache()

@@ -1,5 +1,38 @@
 # ProjectMate 로컬 LLM 실행과 어댑터 학습
 
+## 2026-11-05: 사람별 문맥을 연결한 재학습
+
+`context-lora-20261104` 실험은 기존 10개 사례의 관련 기술 문맥을 PDF 22쪽에서 모아 사례당 하나의 입력으로 구성했다. 이력서 전체나 사례집 전체를 학습한 것은 아니다. 사용 기술, 본인 역할, 실제 수행과 향후 계획을 구분하는 가상 예제 10개를 추가했다. 총 20개 중 학습 13개, 검증 2개, 평가 5개이며 기존 사례의 분할을 유지했다. 개인정보가 있는 머리말과 관련 없는 문단을 제외했고 원문 쪽수, OCR 위치와 보정 내용을 로컬에 보존했다. 정답은 Codex가 검토했으며 독립적인 사람의 검수를 완료한 것은 아니다.
+
+새 실험 형식 `person-context-technologies-v2`는 `skills`와 별도로 `technologies`를 보존한다. 본인이 수행한 프로젝트의 사용 기술 목록은 사용 경험으로 인정하며, `pandas`를 일반 역량명으로 대체하지 않는다. 명시적인 동료 작업, 부정문, 미래 계획과 학습 문맥은 따로 판단한다. 원문 기술명을 근거 범위에서 확인하고, 같은 사례나 가상 예제 그룹이 여러 분할에 들어가면 내보내기를 거부한다.
+
+같은 고정 Qwen3 4B 4bit 모델에서 80단계 LoRA 학습을 완료했다. 마지막 4개 층의 q_proj와 v_proj, rank 8, 학습률 0.00005, batch 1, 정답 토큰만 학습했다. 최대 입력과 정답 길이는 3,216토큰이며 잘림 없이 처리했다. 관측된 최대 MLX 메모리는 약 5.45GB다. 4개 체크포인트 중 검증 손실로 40단계를 선택했다. 기본 모델 손실 0.7684, 선택 어댑터 손실 0.3829이며 손실은 정확도가 아니다. 기본 가중치 해시는 변경되지 않았다.
+
+| 같은 평가 5개 | 기본 모델 + 새 프롬프트 | 새 어댑터 + 새 프롬프트 |
+| --- | ---: | ---: |
+| 엄격한 출력 및 근거 검사 통과 | 4 | 4 |
+| 역량과 수준 집합 전체 일치 | 2 | 1 |
+| 기술과 수준 집합 전체 일치 | 2 | 3 |
+| 역량 micro F1 | 0.667 | 0.727 |
+| 기술 micro F1 | 0.491 | 0.556 |
+
+실제 원문 평가 2개는 이전 실험에 노출된 사례의 문맥을 확장한 회귀 검사다. 가상 평가 3개도 독립적인 실제 사용자 평가를 대체하지 않는다. 정답 목록에 ELB가 빠진 사례 등 검수 한계도 별도 기록했다. 평가 결과를 보고 정답, 체크포인트나 학습 설정을 바꾸지 않았다. 학습에 포함한 사용자의 Python, pandas, SQL 예제는 세 기술을 모두 applied로 출력했으며 이 재현은 평가 점수에 합산하지 않았다.
+
+**새 어댑터는 웹에 적용하지 않았다.** 원문에 없는 Python, SQL, Docker를 추론하거나 미래 WebSocket 학습 계획을 이미 학습한 것으로 처리하는 오류가 남았다. 또한 v2는 웹의 기존 응답 형식과 다르므로 `CAREERFLOW_LOCAL_ADAPTER`에 바로 지정해서는 안 된다. 웹은 기존 기본 모델 설정을 유지한다. 데이터, 어댑터, 출력과 보고서는 Git 제외 경로에만 보관한다.
+
+재현 도구는 `scripts/context_dataset.py`, `scripts/context_contract.py`, `examples/lora-context.yaml`이다. 기존 v1 실행기도 유지한다. `select_adapter.py`는 학습 설정의 최대 길이를 사용하며 검증 문장을 자르지 않는다. 데이터 디렉터리가 준비된 로컬 환경에서 다음 명령을 사용하되, 기존 출력은 덮어쓰지 않으므로 새 실험에서는 설정과 출력 경로를 변경한다.
+
+```sh
+python3 scripts/context_dataset.py data/context-lora-20261104/annotations.jsonl data/context-lora-20261104/vocabulary.json data/context-lora-20261104/chat
+.venv/bin/python scripts/train_adapter.py --config examples/lora-context.yaml
+.venv/bin/python scripts/select_adapter.py --data data/context-lora-20261104/chat --model models/qwen3-4b-instruct-4bit --checkpoints adapters/resume-context-20261104 --output adapters/resume-context-20261104-selected
+.venv/bin/python scripts/evaluate_adapter.py --data data/context-lora-20261104/chat --model models/qwen3-4b-instruct-4bit --adapter adapters/resume-context-20261104-selected --output runs/resume-context-20261104/adapter-test --max-tokens 2400
+```
+
+보고서: `runs/resume-context-20261104/report.html`. 데이터: `data/context-lora-20261104/`. 선택 가중치: `adapters/resume-context-20261104-selected/`.
+
+## 이전 실험 기록
+
 2026-11-04 업데이트: **Qwen3 4B Instruct의 MLX 4bit 모델로 첫 QLoRA 학습과 실제 생성 평가를 완료했다.** 두 PDF의 기술 발췌 30개를 검수해 학습 21개, 검증 3개, 회귀 평가 6개로 나눴다. 대화 템플릿의 정답 형식 문제를 수정한 뒤 100스텝을 다시 학습했고, 검증 손실로 60스텝 어댑터를 선택했다. 약 1.31MB의 어댑터는 실험용으로 보관한다.
 
 학습 모델의 회귀 응답 6개는 모두 앱 검증을 통과했지만, 앱 처리 후 역량과 경험 구분의 집합이 정답과 정확히 일치한 것은 1개다. 미래 계획의 수행 경험 오인, API 사용과 개발의 혼동, 중복 역량 및 근거 범위 오류가 남았다. 개인 이력서 전체에서도 API 개발 경험을 과대 해석했다. **앱 기본값은 학습 전 로컬 모델로 유지했다.** 기본 모델도 같은 종류의 오류가 있어 결과는 검토가 필요한 초안이다. 외부 분석은 `CAREERFLOW_AI_PROVIDER=openai`를 명시할 때만 선택한다.
