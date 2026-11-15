@@ -89,7 +89,8 @@ export async function getJson(path: string, options: FetchOptions): Promise<unkn
   } catch {
     throw new ReviewSourceError('GitHub에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.', 502);
   }
-  if (response.status === 404 || response.status === 451 || (response.status >= 300 && response.status < 400))
+  // 410: 지워진 이슈.
+  if (response.status === 404 || response.status === 410 || response.status === 451 || (response.status >= 300 && response.status < 400))
     throw new ReviewSourceError('저장소를 찾을 수 없습니다. 공개 저장소인지, 주소가 맞는지 확인해주세요.', 404);
   if (response.status === 403 || response.status === 429)
     throw new ReviewSourceError('GitHub 호출 한도에 걸렸습니다. 잠시 후 다시 시도해주세요.', 503);

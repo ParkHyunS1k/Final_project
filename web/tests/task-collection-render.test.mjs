@@ -228,3 +228,46 @@ test('완료 제안은 CI를 확인한 뒤에만: 확인 중이거나 다시 읽
   assert.doesNotMatch(failed, /완료 근거로 채우기/);
   assert.match(failed, /호출 한도/);
 });
+
+// 2026-11-15 출처 이슈: 패널에 업무가 나온 GitHub 이슈와 지금 상태(닫힘·가져온 뒤 바뀜·없어짐)를 보인다.
+test('개발 현황: 출처 이슈 링크와 닫힘·변경·없어짐 표시, 이슈가 닫혔는데 업무가 남았으면 알린다', () => {
+  const t = { id: 1, title: 'Login 화면', done: false, status: 'in_progress' };
+  const base = { task: t, pulls: [], canEdit: true, onStart: () => {}, onUseEvidence: () => {} };
+  const links = [{ repo: 'team/app', number: 3 }, { repo: 'team/app', number: 4 }, { repo: 'team/app', number: 5 }];
+  const st = (number, over) => ({ repo: 'team/app', number, title: `이슈 제목 ${number}`, url: `https://github.com/team/app/issues/${number}`, state: 'open', reason: null, changed: false, ...over });
+  const loading = renderToString(createElement(PrPanel, { ...base, issues: links }));
+  assert.match(loading, /출처 이슈/);
+  assert.match(loading, /href="https:\/\/github.com\/team\/app\/issues\/3"/);
+  assert.match(loading, /불러오는 중/);
+  const html = renderToString(
+    createElement(PrPanel, {
+      ...base,
+      issues: links,
+      issueStatus: [st(3, { state: 'closed', reason: 'completed' }), st(4, { changed: true }), st(5, { state: 'missing', title: '' })],
+    }),
+  );
+  assert.match(html, /이슈 제목 3/);
+  assert.match(html, /완료로 닫힘/);
+  assert.match(html, /가져온 뒤 바뀜/);
+  assert.match(html, /찾을 수 없음/);
+  assert.match(html, /GitHub에서 닫힌 이슈가 있어요: #3/);
+  const done = renderToString(
+    createElement(PrPanel, { ...base, task: { ...t, done: true, status: 'done' }, issues: links.slice(0, 1), issueStatus: [st(3, { state: 'closed', reason: 'completed' })] }),
+  );
+  assert.doesNotMatch(done, /닫힌 이슈가 있어요/);
+  const failed = renderToString(createElement(PrPanel, { ...base, issues: links.slice(0, 1), issueError: '이슈 상태를 불러오지 못했어요.' }));
+  assert.match(failed, /이슈 상태를 불러오지 못했어요/);
+  assert.doesNotMatch(failed, /불러오는 중/);
+  assert.doesNotMatch(renderToString(createElement(PrPanel, base)), /출처 이슈/);
+});
+
+test('개발 현황: 상태를 받았는데 빠진 출처 이슈(업무당 3개 초과)는 불러오는 중이 아니라 확인 안 함', () => {
+  const t = { id: 1, title: 'Login 화면', done: false, status: 'in_progress' };
+  const links = [3, 4, 5, 6].map((number) => ({ repo: 'team/app', number }));
+  const st = (number) => ({ repo: 'team/app', number, title: `이슈 ${number}`, url: '', state: 'open', reason: null, changed: false });
+  const html = renderToString(
+    createElement(PrPanel, { task: t, pulls: [], canEdit: true, onStart: () => {}, onUseEvidence: () => {}, issues: links, issueStatus: [st(3), st(4), st(5)] }),
+  );
+  assert.doesNotMatch(html, /불러오는 중/);
+  assert.match(html, /확인 안 함/);
+});

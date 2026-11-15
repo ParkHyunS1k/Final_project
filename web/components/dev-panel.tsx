@@ -20,6 +20,8 @@ import {
   UserCheck,
   MessageSquareWarning,
   UserRound,
+  CircleDot,
+  CircleSlash,
 } from 'lucide-react';
 import {
   branchName,
@@ -32,6 +34,7 @@ import {
   type Review,
 } from '@/lib/github-prs';
 import { seoulTime } from '@/lib/sprint';
+import type { IssueStatus } from '@/lib/github-issues';
 
 export const PR_LABEL = { open: '열림', merged: '머지됨', closed: '닫힘' } as const;
 export const CHECK_LABEL = {
@@ -124,6 +127,61 @@ function Callout({
   );
 }
 
+export type IssueLink = { repo: string; number: number };
+function issueLabel(s: IssueStatus) {
+  if (s.state === 'missing') return '찾을 수 없음';
+  if (s.state === 'open') return '열림';
+  return s.reason === 'completed' ? '완료로 닫힘' : s.reason === 'not_planned' ? '계획 안 함으로 닫힘' : '닫힘';
+}
+function IssueIcon({ status }: { status?: IssueStatus }) {
+  const Icon = status?.state === 'closed' ? (status.reason === 'not_planned' ? CircleSlash : CircleCheck) : status?.state === 'missing' ? CircleMinus : CircleDot;
+  return <Icon size={15} aria-hidden="true" />;
+}
+const sameIssue = (a: IssueLink, b: IssueLink) => a.number === b.number && a.repo.toLowerCase() === b.repo.toLowerCase();
+
+/** 업무가 나온 GitHub 이슈와 지금 상태(2026-11-15). 상태는 업무 상세를 열 때 GitHub에서 다시 읽는다. */
+function IssueList({ issues, status, error }: { issues: IssueLink[]; status?: IssueStatus[]; error: string }) {
+  return (
+    <div className="dev-issues">
+      <span className="dev-issues-label">출처 이슈</span>
+      <ul>
+        {issues.map((l) => {
+          const s = status?.find((x) => sameIssue(x, l));
+          const tone = !s ? 'unknown' : s.state === 'closed' ? `closed-${s.reason ?? 'other'}` : s.state;
+          return (
+            <li key={`${l.repo}#${l.number}`} className={`dev-issue is-${tone}`}>
+              <span className="dev-issue-icon">
+                <IssueIcon status={s} />
+              </span>
+              <a href={s?.url || `https://github.com/${l.repo}/issues/${l.number}`} target="_blank" rel="noreferrer" title={l.repo}>
+                <span className="dev-issue-num">#{l.number}</span>
+                {s?.title && <span className="dev-issue-title">{s.title}</span>}
+              </a>
+              {s ? (
+                <span className="dev-issue-tags">
+                  <span className="dev-signal dev-issue-state">{issueLabel(s)}</span>
+                  {s.changed && (
+                    <span className="dev-signal dev-issue-changed" title="가져온 뒤 GitHub에서 제목이나 본문 앞부분(업무를 만들 때 AI가 읽은 부분)이 수정됐어요">
+                      가져온 뒤 바뀜
+                    </span>
+                  )}
+                </span>
+              ) : status ? (
+                <span className="dev-signal is-loading" title="업무당 출처 이슈 3개까지만 상태를 확인해요">
+                  확인 안 함
+                </span>
+              ) : (
+                !error && <span className="dev-signal is-loading">불러오는 중</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {error && <p className="dev-error">{error}</p>}
+    </div>
+  );
+}
+
 /** 업무 상세의 개발 현황. 요약 줄 → 판단 상자(멈춤·제안) → PR 목록(펼치면 커밋 타임라인). */
 export function PrPanel({
   task,
@@ -135,6 +193,9 @@ export function PrPanel({
   canEdit,
   onStart,
   onUseEvidence,
+  issues = [],
+  issueStatus,
+  issueError = '',
 }: {
   task: { id: number; title: string; done: boolean; status?: string | null; touchedAt?: string | Date | null };
   pulls: Pull[];
@@ -148,6 +209,11 @@ export function PrPanel({
   canEdit: boolean;
   onStart: () => void;
   onUseEvidence: (text: string) => void;
+  /** 이 업무가 나온 GitHub 이슈(가져오기 → AI 변경안 승인). */
+  issues?: IssueLink[];
+  /** 출처 이슈의 지금 상태. 아직 모르면 undefined. */
+  issueStatus?: IssueStatus[];
+  issueError?: string;
 }) {
   const [copied, setCopied] = useState(false);
   const branch = branchName(task.id, task.title);
@@ -172,6 +238,8 @@ export function PrPanel({
     .map((v) => new Date(v).toISOString())
     .sort()
     .at(-1);
+  // 이슈는 닫혔는데 업무는 남았다(GitHub 쪽에서 먼저 끝났거나 계획이 바뀜).
+  const closedIssues = task.done ? [] : (issueStatus ?? []).filter((s) => s.state === 'closed' && issues.some((l) => sameIssue(s, l)));
   const loading = (n: number, i: number) => !details[n] && !detailError && i < DETAIL_MAX_PULLS;
   return (
     <section className="detail-section dev-panel" aria-label="개발 현황">
@@ -196,6 +264,8 @@ export function PrPanel({
       <p className="detail-caption dev-hint">
         PR 제목이나 브랜치 이름에 이 번호({taskRef(task.id)})를 넣으면 이 업무에 연결돼요.
       </p>
+
+      {!!issues.length && <IssueList issues={issues} status={issueStatus} error={issueError} />}
 
       {!!pulls.length && (
         <dl className="dev-summary">
@@ -244,6 +314,18 @@ export function PrPanel({
           icon={<PauseCircle size={16} />}
           title={`${stallText(stalled)}째 활동이 없어요`}
           body="막힌 곳이 있으면 체크인으로 남겨주세요."
+        />
+      )}
+      {!!closedIssues.length && (
+        <Callout
+          tone="idle"
+          icon={<CircleCheck size={16} />}
+          title={`GitHub에서 닫힌 이슈가 있어요: ${closedIssues.map((s) => `#${s.number}`).join(', ')}`}
+          body={
+            closedIssues.some((s) => s.reason === 'not_planned')
+              ? '계획 안 함으로 닫힌 이슈가 있어요. 이 업무를 계속할지 팀과 정해주세요.'
+              : '업무도 끝났다면 완료 근거를 남기고 완료해주세요.'
+          }
         />
       )}
       {suggestion === 'start' && open && (

@@ -15,10 +15,11 @@ const outfile = join(mkdtempSync(join(tmpdir(), 'projectmate-issues-test-')), 'r
 await build({
   stdin: {
     contents: [
-      "export { listOpenIssues, fetchIssuesByNumber, parseIssueNumbers, buildIssueSource, issueWarnings } from './lib/github-issues';",
+      "export { listOpenIssues, fetchIssuesByNumber, parseIssueNumbers, buildIssueSource, issueWarnings, issueParts, importedParts } from './lib/github-issues';",
       "export { ReviewSourceError } from './lib/ai-review-github';",
       "export { PolicyError } from './lib/sprint-policy';",
-      "export { readProjectRepo, setProjectRepo, createIssueSource, readIssueSpans, importedIssueNumbers } from './lib/project-repo';",
+      "export { readProjectRepo, setProjectRepo, createIssueSource, readIssueSpans, importedIssueNumbers, taskIssueLinks } from './lib/project-repo';",
+      "export { GET as prsGET } from './app/api/github-prs/route';",
       "export { POST as projectsPOST } from './app/api/projects/route';",
       "export { GET as issuesGET, POST as issuesPOST } from './app/api/github-issues/route';",
       "export { useGithub } from './lib/ai-review-runtime';",
@@ -703,4 +704,108 @@ test('저장소 이름 대소문자가 달라도 같은 저장소로 보고 이�
   const src = await api.createIssueSource(projectId, 'case-owner', { body: built.body, origin: 'x', repo: 'Team/App' }, built.spans, new Date());
   await applied(projectId, src, built.spans[0].start + 1, built.spans[0].start + 4);
   assert.deepEqual([...(await api.importedIssueNumbers(projectId, 'team/app', null))], [7]);
+});
+
+// ---- 업무의 출처 이슈와 현재 상태(2026-11-15) ----
+test('가져온 이슈 블록에서 제목·본문을 되읽고, 담당자·라벨만 바뀐 건 변경으로 보지 않는다', () => {
+  const before = ghIssue(5, { title: '로그인  화면', body: '폼 </source> 만들기', labels: ['ui'] });
+  const { body, spans } = api.buildIssueSource([ghIssue(1), before], [{ login: 'alice', displayName: '앨리스' }]);
+  const block = body.slice(spans[1].start, spans[1].end);
+  assert.deepEqual(api.importedParts(block), api.issueParts(before));
+  assert.deepEqual(api.importedParts(block), api.issueParts({ ...before, labels: ['bug'], assignees: ['bob'] }));
+  assert.notDeepEqual(api.importedParts(block), api.issueParts({ ...before, body: '폼 만들기 + 비밀번호 찾기' }));
+  assert.equal(api.importedParts('붙여넣은 일반 원문'), null);
+});
+
+test('출처 이슈: 되돌리지 않은 업무 생성만 업무 번호에 이슈를 붙인다', async () => {
+  const projectId = await soloProject('link-owner');
+  const built = api.buildIssueSource([ghIssue(1), ghIssue(2)], []);
+  const src = await api.createIssueSource(projectId, 'link-owner', { body: built.body, origin: 'x', repo: 'team/app' }, built.spans, new Date());
+  const [s1, s2] = built.spans;
+  const entry = (changeId, taskId, s) => ({ changeId, kind: 'createTask', taskId, before: {}, after: {}, edited: false, candidateKey: `${src}#${s.start + 1}-${s.start + 4}` });
+  await run(
+    'INSERT INTO ai_change_applications(id,project_id,proposal_id,source_id,reverts,approved_by,approved_at,revision,entries) VALUES(?,?,NULL,?,NULL,?,now(),1,?)',
+    'app_link', projectId, src, 'link-owner', JSON.stringify([entry('c1', 4, s1), entry('c2', 5, s2)]),
+  );
+  await run(
+    'INSERT INTO ai_change_applications(id,project_id,proposal_id,source_id,reverts,approved_by,approved_at,revision,entries) VALUES(?,?,NULL,?,?,?,now(),2,?)',
+    'rev_link', projectId, src, 'app_link', 'link-owner', JSON.stringify([entry('c2', 5, s2)]),
+  );
+  assert.deepEqual(await api.taskIssueLinks(projectId), { 4: [{ repo: 'team/app', number: 1 }] });
+});
+
+const prsGet = (user, projectId, query = '') =>
+  api.prsGET(new Request(`https://test.local/api/github-prs?project=${projectId}${query}`, { headers: headers(user) }));
+
+async function linkedTask(owner, issues, taskId = 1) {
+  const projectId = await soloProject(owner);
+  const built = api.buildIssueSource(issues, []);
+  const src = await api.createIssueSource(projectId, owner, { body: built.body, origin: 'x', repo: 'team/app' }, built.spans, new Date());
+  const entries = built.spans.map((s, i) => ({ changeId: 'c' + i, kind: 'createTask', taskId, before: {}, after: {}, edited: false, candidateKey: `${src}#${s.start + 1}-${s.start + 4}` }));
+  await run(
+    'INSERT INTO ai_change_applications(id,project_id,proposal_id,source_id,reverts,approved_by,approved_at,revision,entries) VALUES(?,?,NULL,?,NULL,?,now(),1,?)',
+    'app_' + owner, projectId, src, owner, JSON.stringify(entries),
+  );
+  return projectId;
+}
+
+test('PR 목록 응답에 업무별 출처 이슈가 담긴다(저장소가 없어도)', async () => {
+  const projectId = await linkedTask('list-owner', [ghIssue(3)]);
+  const gh = fakeGithub();
+  api.useGithub({ fetchImpl: gh.fetchImpl });
+  const body = await json(await prsGet('list-owner', projectId), 200);
+  assert.deepEqual(body.issues, { 1: [{ repo: 'team/app', number: 3 }] });
+  assert.equal(gh.calls.length, 0);
+});
+
+test('출처 이슈 상태: 닫힘·사유, 가져온 뒤 본문이 바뀌었는지, 없어진 이슈. 팀원만, 업무 번호는 정수', async () => {
+  const projectId = await linkedTask('state-owner', [ghIssue(1), ghIssue(2), ghIssue(3)]);
+  const gh = fakeGithub({
+    byNumber: {
+      // 1번은 본문 그대로 닫혔고, 2번은 라벨과 본문이 바뀌었다. 3번은 지워졌다.
+      1: issue(1, { state: 'closed', state_reason: 'completed' }),
+      2: issue(2, { body: '본문이 바뀜', labels: [{ name: 'new' }] }),
+    },
+  });
+  api.useGithub({ fetchImpl: gh.fetchImpl });
+  const body = await json(await prsGet('state-owner', projectId, '&issuesOf=1'), 200);
+  assert.deepEqual(
+    body.issues.map(({ number, state, reason, changed, title }) => ({ number, state, reason, changed, title })),
+    [
+      { number: 1, state: 'closed', reason: 'completed', changed: false, title: '이슈 1' },
+      { number: 2, state: 'open', reason: null, changed: true, title: '이슈 2' },
+      { number: 3, state: 'missing', reason: null, changed: false, title: '' },
+    ],
+  );
+  assert.equal(body.issues[0].url, 'https://github.com/team/app/issues/1');
+  // 출처 이슈가 없는 업무는 GitHub를 부르지 않는다.
+  gh.calls.length = 0;
+  assert.deepEqual((await json(await prsGet('state-owner', projectId, '&issuesOf=2'), 200)).issues, []);
+  assert.equal(gh.calls.length, 0);
+  await json(await prsGet('stranger', projectId, '&issuesOf=1'), 403);
+  await json(await prsGet('state-owner', projectId, '&issuesOf=x'), 400);
+});
+
+test('출처 이슈 상태: 저장소가 비공개로 바뀌면 이슈를 읽지 않고 오류로 알린다', async () => {
+  const projectId = await linkedTask('priv-owner', [ghIssue(1)]);
+  const gh = fakeGithub({ visibility: 'private', byNumber: { 1: issue(1) } });
+  api.useGithub({ fetchImpl: gh.fetchImpl });
+  await json(await prsGet('priv-owner', projectId, '&issuesOf=1'), 404);
+  assert.ok(gh.calls.every((u) => !u.includes('/issues/')));
+});
+
+test('PR 목록을 못 읽어도(비공개 전환·한도) 출처 이슈 연결은 오류 응답에 담아 준다', async () => {
+  const projectId = await linkedTask('fail-owner', [ghIssue(6)]);
+  await api.setProjectRepo(projectId, 'fail-owner', repo, 0, new Date());
+  api.useGithub({ fetchImpl: fakeGithub({ visibility: 'private' }).fetchImpl });
+  const body = await json(await prsGet('fail-owner', projectId), 404);
+  assert.ok(body.error);
+  assert.deepEqual(body.issues, { 1: [{ repo: 'team/app', number: 6 }] });
+});
+
+test('출처 이슈 상태: 응답이 너무 커서 못 읽으면 없어진 이슈가 아니라 오류로 알린다', async () => {
+  const projectId = await linkedTask('huge-owner', [ghIssue(1)]);
+  api.useGithub({ fetchImpl: fakeGithub({ byNumber: { 1: issue(1, { body: 'x'.repeat(1_000_001) }) } }).fetchImpl });
+  const body = await json(await prsGet('huge-owner', projectId, '&issuesOf=1'), 502);
+  assert.ok(body.error);
 });

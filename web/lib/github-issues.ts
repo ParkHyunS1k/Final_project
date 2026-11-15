@@ -120,6 +120,61 @@ function clip(text: string, max: number) {
   return text.length > max ? text.slice(0, max) + '\n…(생략)' : text;
 }
 
+const SEPARATOR = '---';
+/** 원문에 들어가는 이슈 제목·본문. 가져온 뒤 바뀌었는지도 이 값으로 비교한다(담당자·라벨은 보지 않는다). */
+export function issueParts(issue: { title: string; body: string }) {
+  return { title: oneLine(issue.title), body: clip(neutralizeSourceTags(issue.body), BODY_CHARS) };
+}
+/** 저장된 이슈 블록에서 제목·본문을 되읽는다. 머리 줄은 줄바꿈이 없으므로 첫 구분선 뒤가 본문이다. */
+export function importedParts(block: string): { title: string; body: string } | null {
+  const head = /^\[GitHub 이슈 #\d+\] (.*)/.exec(block);
+  const at = block.indexOf(`\n${SEPARATOR}\n`);
+  return head && at >= 0 ? { title: head[1], body: block.slice(at + SEPARATOR.length + 2) } : null;
+}
+
+export type IssueStatus = {
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  state: 'open' | 'closed' | 'missing';
+  reason: 'completed' | 'not_planned' | null;
+  /** 가져온 뒤 제목이나 본문 앞부분(AI가 읽은 2,000자)이 바뀌었다. 그 뒤 변경은 업무 근거가 아니라 보지 않는다. */
+  changed: boolean;
+};
+
+/** 업무의 출처 이슈를 지금 다시 읽는다. 지워지거나 옮겨진 이슈는 missing. 공개 확인은 부르는 쪽이 한다. */
+export async function readIssueStatus(
+  repo: Repo,
+  number: number,
+  block: string,
+  options: FetchOptions,
+): Promise<IssueStatus> {
+  const base = { repo: `${repo.owner}/${repo.name}`, number, url: `https://github.com/${repo.owner}/${repo.name}/issues/${number}` };
+  let raw: Record<string, unknown> | null;
+  try {
+    raw = (await getJson(`${repoPath(repo)}/issues/${number}`, options)) as Record<string, unknown> | null;
+    // null은 응답이 너무 커서 버린 것이다. 없어진 이슈와 구분한다.
+    if (raw === null) throw new ReviewSourceError('GitHub 응답이 너무 커서 이슈를 읽지 못했습니다.', 502);
+  } catch (e) {
+    if (e instanceof ReviewSourceError && e.status === 404) raw = null;
+    else throw e;
+  }
+  const issue = raw && toIssue(raw, true);
+  if (!raw || !issue || issue.number !== number || raw.pull_request)
+    return { ...base, title: '', state: 'missing', reason: null, changed: false };
+  const before = importedParts(block);
+  const now = issueParts(issue);
+  return {
+    ...base,
+    title: issue.title,
+    url: issue.url || base.url,
+    state: raw.state === 'closed' ? 'closed' : 'open',
+    reason: raw.state_reason === 'completed' || raw.state_reason === 'not_planned' ? raw.state_reason : null,
+    changed: !!before && (before.title !== now.title || before.body !== now.body),
+  };
+}
+
 /** 고른 이슈를 원문 하나로 묶고 이슈별 위치를 돌려준다. 팀원 판정은 연결된 GitHub 아이디(대소문자 무시). */
 export function buildIssueSource(
   issues: GithubIssue[],
@@ -136,13 +191,8 @@ export function buildIssueSource(
       issue.assignees.length ? `담당자: ${issue.assignees.map((a) => '@' + a).join(', ')}` : '',
       issue.labels.length ? `라벨: ${issue.labels.map(oneLine).join(', ')}` : '',
     ].filter(Boolean);
-    const block = [
-      `[GitHub 이슈 #${issue.number}] ${oneLine(issue.title)}`,
-      meta.join(' · '),
-      issue.url,
-      '---',
-      clip(neutralizeSourceTags(issue.body), BODY_CHARS),
-    ].join('\n');
+    const parts = issueParts(issue);
+    const block = [`[GitHub 이슈 #${issue.number}] ${parts.title}`, meta.join(' · '), issue.url, SEPARATOR, parts.body].join('\n');
     const start = body ? body.length + 2 : 0;
     if (start + block.length + NOTE_RESERVE > MAX_SOURCE) break;
     body = body ? body + '\n\n' + block : block;

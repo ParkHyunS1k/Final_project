@@ -38,7 +38,8 @@ import {
   type Pull,
   type PullDetail,
 } from '@/lib/github-prs';
-import { CHECK_LABEL, CheckIcon, PR_LABEL, PrPanel, stallText } from './dev-panel';
+import { CHECK_LABEL, CheckIcon, PR_LABEL, PrPanel, stallText, type IssueLink } from './dev-panel';
+import type { IssueStatus } from '@/lib/github-issues';
 import {
   people as samplePeople,
   type Sprint as ServerSprint,
@@ -115,12 +116,16 @@ export function TaskCollection({
   // 멈춤 판정 시각. 저장소가 있으면 PR 목록을 읽은 서버 시각(그 뒤 PR 활동은 모르므로), 없으면 'live'(asOf).
   // ponytail: PR 목록은 화면을 열 때 한 번 읽으므로 멈춤 배지도 그때 기준. 실시간이 필요하면 웹훅.
   const [pullsClock, setPullsClock] = useState<string | null>(null);
+  // 출처 이슈(2026-11-15): 업무별 GitHub 이슈는 PR 목록과 함께 받고, 지금 상태는 업무 상세를 열 때마다 읽는다.
+  const [linkedIssues, setLinkedIssues] = useState<Record<number, IssueLink[]>>({});
   useEffect(() => {
     if (givenPulls || !projectId) return;
     let alive = true;
     apiFetch('/api/github-prs?project=' + encodeURIComponent(projectId))
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => r.json().catch(() => null))
       .then((body) => {
+        // 출처 이슈 연결은 PR을 못 읽은 오류 응답에도 들어 있다.
+        if (alive && body?.issues) setLinkedIssues(body.issues);
         if (!alive || !body?.links) return;
         setLoadedPulls(body.links);
         setPullsClock(body.repo ? (body.asOf ?? null) : 'live');
@@ -131,7 +136,32 @@ export function TaskCollection({
     };
   }, [projectId, givenPulls]);
   const pulls = givenPulls ?? loadedPulls;
+  const [issueStatus, setIssueStatus] = useState<{ taskId: number; list?: IssueStatus[]; error: string } | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
+  // 상세를 닫거나 다른 업무를 열면 지난 이슈 상태를 버린다(다시 읽는 동안 지난 '닫힘'으로 안내하지 않게).
+  const [statusFor, setStatusFor] = useState(selected);
+  if (statusFor !== selected) {
+    setStatusFor(selected);
+    setIssueStatus(null);
+  }
+  const hasIssues = selected !== null && !!linkedIssues[selected]?.length;
+  useEffect(() => {
+    if (!hasIssues || selected === null || !projectId) return;
+    let alive = true;
+    const fail = (message?: string) =>
+      alive && setIssueStatus({ taskId: selected, error: message ?? '이슈 상태를 불러오지 못했어요.' });
+    apiFetch(`/api/github-prs?project=${encodeURIComponent(projectId)}&issuesOf=${selected}`)
+      .then(async (r) => {
+        const body = await r.json().catch(() => null);
+        if (!alive) return;
+        if (r.ok && Array.isArray(body?.issues)) setIssueStatus({ taskId: selected, list: body.issues, error: '' });
+        else fail(body?.error);
+      })
+      .catch(() => fail());
+    return () => {
+      alive = false;
+    };
+  }, [projectId, selected, hasIssues]);
   // 개발 현황(2026-11-14): GitHub 호출 한도 때문에 업무 상세를 열 때 그 업무의 최근 PR 3개만 읽는다.
   // CI는 바뀌므로 상세를 열 때마다 다시 읽는다.
   const [details, setDetails] = useState<Record<number, PullDetail>>({});
@@ -498,6 +528,9 @@ export function TaskCollection({
           pulls={pulls[task.id] ?? []}
           details={details}
           detailError={detailError}
+          issues={linkedIssues[task.id] ?? []}
+          issueStatus={issueStatus?.taskId === task.id ? issueStatus.list : undefined}
+          issueError={issueStatus?.taskId === task.id ? issueStatus.error : ''}
           stalled={stalledOf(task)}
           onClose={() => setSelected(null)}
           onEdit={() => {
@@ -522,6 +555,9 @@ function TaskDetail({
   pulls,
   details,
   detailError,
+  issues,
+  issueStatus,
+  issueError,
   stalled,
   onClose,
   onEdit,
@@ -538,6 +574,9 @@ function TaskDetail({
   pulls: Pull[];
   details: Record<number, PullDetail>;
   detailError: string;
+  issues: IssueLink[];
+  issueStatus?: IssueStatus[];
+  issueError: string;
   stalled: number | null;
   onClose: () => void;
   onEdit: () => void;
@@ -702,6 +741,9 @@ function TaskDetail({
             pulls={pulls}
             details={details}
             detailError={detailError}
+            issues={issues}
+            issueStatus={issueStatus}
+            issueError={issueError}
             stalled={stalled}
             asOf={asOf}
             canEdit={canEdit && !busy}
