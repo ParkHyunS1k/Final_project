@@ -59,6 +59,8 @@ type Checkin = {
   note: string;
   remaining: number;
   created_at: string;
+  /** 오늘의 랩 기록에서 이 업무에 남긴 막힌 점. 예전 체크인은 없다. */
+  blocker?: string | null;
 };
 type Mutate = (
   action: string,
@@ -542,6 +544,28 @@ export function TaskCollection({
     </div>
   );
 }
+/** 업무 상세의 체크인 이력. 오늘의 랩 기록에서 이 업무에 남긴 막힌 점도 함께 보인다. */
+export function CheckinHistory({ checkins, taskId }: { checkins: Checkin[]; taskId: number }) {
+  const mine = checkins.filter((c) => c.task_id === taskId);
+  if (!mine.length) return <p className="muted">최근 기록에 이 업무의 체크인이 없습니다.</p>;
+  return (
+    <>
+      {mine.map((c) => (
+        <article className="detail-checkin" key={c.id}>
+          <p>{c.note}</p>
+          {c.blocker && <p className="detail-blocker">{`막힌 점 · ${c.blocker}`}</p>}
+          <small>
+            남은 {c.remaining}h ·{' '}
+            {new Date(c.created_at).toLocaleString('ko-KR', {
+              timeZone: 'Asia/Seoul',
+            })}
+          </small>
+        </article>
+      ))}
+    </>
+  );
+}
+
 function TaskDetail({
   task,
   sprint,
@@ -781,22 +805,7 @@ function TaskDetail({
           </section>
           <section className="detail-section">
             <h3>체크인</h3>
-            {checkins
-              .filter((c) => c.task_id === task.id)
-              .map((c) => (
-                <article className="detail-checkin" key={c.id}>
-                  <p>{c.note}</p>
-                  <small>
-                    남은 {c.remaining}h ·{' '}
-                    {new Date(c.created_at).toLocaleString('ko-KR', {
-                      timeZone: 'Asia/Seoul',
-                    })}
-                  </small>
-                </article>
-              ))}
-            {!checkins.some((c) => c.task_id === task.id) && (
-              <p className="muted">최근 기록에 이 업무의 체크인이 없습니다.</p>
-            )}
+            <CheckinHistory checkins={checkins} taskId={task.id} />
             <p className="detail-caption">
               프로젝트의 최근 체크인 20건에서 표시합니다.
             </p>

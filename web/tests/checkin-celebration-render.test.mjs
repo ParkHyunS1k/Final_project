@@ -30,6 +30,7 @@ test('영상 6개가 모두 public/에 있다', () => {
 
 test('진행 보고 저장이면 난수로 6개 중 하나를 고른다', () => {
   assert.equal(celebrationFor('checkin', false, 0), CELEBRATIONS[0]);
+  assert.equal(celebrationFor('report', false, 0), CELEBRATIONS[0]);
   assert.equal(celebrationFor('checkin', false, 0.5), CELEBRATIONS[3]);
   assert.equal(celebrationFor('checkin', false, 0.9999), CELEBRATIONS[5]);
 });

@@ -34,10 +34,6 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  NativeSelect,
-  NativeSelectOption,
-} from '@/components/ui/native-select';
-import {
   people as samplePeople,
   seoulTime,
   type Sprint as ServerSprint,
@@ -52,6 +48,8 @@ type Task = Wire<ServerTask>;
 import { meetingSuggestions } from '@/lib/meeting-suggestions';
 import { apiFetch, signInWithGoogle } from '@/lib/supabase-browser';
 import { GoalEditor } from '@/components/goal-editor';
+import { LapReportSheet, prChips } from '@/components/lap-report';
+import type { Pull } from '@/lib/github-prs';
 
 export type Lifecycle = 'legacy' | 'draft' | 'active' | 'completed' | 'expired';
 export type Deliverable = {
@@ -116,7 +114,7 @@ type State = ProjectMeta & {
     created_at: string;
   }[];
 };
-type Modal = 'checkin' | 'evidence' | null;
+type Modal = 'evidence' | null;
 export default function ProjectDashboard({
   onProject,
   teamExtra,
@@ -172,9 +170,9 @@ function Dashboard({
   const [notice, setNotice] = useState('');
   const [celebration, setCelebration] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
-  const [note, setNote] = useState('');
-  const [taskId, setTaskId] = useState(1);
-  const [remaining, setRemaining] = useState(2);
+  // 오늘의 랩 기록(2026-11-16): 진행 보고는 오른쪽 패널에서 내 업무 전체를 한 번에.
+  const [lapOpen, setLapOpen] = useState(false);
+  const [lapPulls, setLapPulls] = useState<Record<number, Pull[]>>({});
   const [evidenceId, setEvidenceId] = useState('');
   const [evidence, setEvidence] = useState('');
   const [editingTask, setEditingTask] = useState<Task | null | undefined>(
@@ -359,15 +357,17 @@ function Dashboard({
     }
   }
   function openCheckin() {
-    const t = reportable.first;
-    if (!t) {
+    if (!myOpen.length) {
       setNotice('본인에게 배정된 진행 중인 업무가 없습니다.');
       return;
     }
-    setTaskId(t.id);
-    setRemaining(t.remaining);
-    setNote('');
-    setDialog('checkin');
+    setError('');
+    setLapOpen(true);
+    // 연결된 PR은 '오늘 한 일' 칩과 완료 근거 미리 채우기에만 쓴다. 못 읽어도 보고는 된다.
+    apiFetch('/api/github-prs?project=' + encodeURIComponent(projectId))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => setLapPulls(body?.links ?? {}))
+      .catch(() => setLapPulls({}));
   }
   const s = state?.sprint;
   const people = s?.people ?? samplePeople;
@@ -398,6 +398,14 @@ function Dashboard({
   const reportable = state
     ? reportChoices(tasks, state.me, isOwner)
     : { open: [] as Task[], first: null };
+  // 랩 기록은 내 업무만(팀장도). 대신 보고는 API에서만 허용한다.
+  // 패널은 20개까지라 마감이 가까운 순(마감 없는 업무는 뒤)으로 놓는다.
+  const myOpen = state
+    ? tasks
+        .filter((t) => !t.done && t.person === state.me.person)
+        .sort((a, b) => (a.dueAt ? Date.parse(a.dueAt) : Infinity) - (b.dueAt ? Date.parse(b.dueAt) : Infinity))
+    : [];
+  const myName = state?.members.find((m) => m.person === state.me.person)?.display_name ?? '';
   const onClockZero = useCallback(() => {
     void load().catch(() => {});
   }, [load]);
@@ -1041,6 +1049,28 @@ function Dashboard({
           onDone={() => setCelebration(null)}
         />
       )}
+      {state && (
+        <LapReportSheet
+          open={lapOpen}
+          onOpenChange={setLapOpen}
+          subtitle={`${myName} · ${seoulTime(state.asOf).slice(5, 10).replace('-', '/')} (KST)`}
+          tasks={myOpen}
+          chips={prChips(lapPulls, myOpen, state.asOf)}
+          evidenceFor={(id) =>
+            (lapPulls[id] ?? [])
+              .filter((p) => p.state === 'merged')
+              .map((p) => `PR #${p.number} ${p.title} ${p.url}`)
+              .join('\n')
+          }
+          busy={busy}
+          error={lapOpen ? error : ''}
+          onSubmit={async (body) => {
+            const ok = await mutate('report', body, '진행 보고를 저장하고 예상 일정을 재계산했습니다.');
+            if (ok) setLapOpen(false);
+            return ok;
+          }}
+        />
+      )}
       <Dialog
         open={dialog !== null}
         onOpenChange={(open) => {
@@ -1048,80 +1078,11 @@ function Dashboard({
         }}
       >
         <DialogContent className="demo-dialog">
-          <DialogTitle>
-            {dialog === 'checkin' ? '진행 보고' : '결과물 근거 기록'}
-          </DialogTitle>
+          <DialogTitle>결과물 근거 기록</DialogTitle>
           <DialogDescription>
-            {dialog === 'checkin'
-              ? '막힌 점과 남은 공수를 저장하면 예상 종료를 다시 계산합니다. 보고가 없어도 완주 판정은 결과물 기준입니다.'
-              : '저장소와 실행 방법, 데모 또는 영상, 팀원별 기여를 남겨주세요. 팀장이 사람의 판단으로 확인합니다.'}
+            저장소와 실행 방법, 데모 또는 영상, 팀원별 기여를 남겨주세요. 팀장이 사람의 판단으로 확인합니다.
           </DialogDescription>
-          {dialog === 'checkin' ? (
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (
-                  await mutate(
-                    'checkin',
-                    { taskId, note, remaining },
-                    '진행 보고를 저장하고 예상 일정을 재계산했습니다.',
-                  )
-                )
-                  setDialog(null);
-              }}
-            >
-              <label className="input-label" htmlFor="checkin-task">
-                보고할 업무
-              </label>
-              <NativeSelect
-                id="checkin-task"
-                value={taskId}
-                onChange={(e) => {
-                  const id = Number(e.target.value);
-                  setTaskId(id);
-                  setRemaining(
-                    s?.tasks.find((t) => t.id === id)?.remaining ?? 0,
-                  );
-                }}
-              >
-                {reportable.open.map((t) => (
-                  <NativeSelectOption key={t.id} value={t.id}>
-                    {t.title}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-              <label className="input-label" htmlFor="remaining">
-                앞으로 남은 시간
-              </label>
-              <input
-                id="remaining"
-                type="number"
-                min="0"
-                max="200"
-                step="0.5"
-                required
-                value={remaining}
-                onChange={(e) => setRemaining(Number(e.target.value))}
-              />
-              <label className="input-label" htmlFor="note">
-                완료한 것 · 막힌 점
-              </label>
-              <textarea
-                id="note"
-                rows={4}
-                maxLength={1000}
-                required
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-              />
-              <button
-                className="btn primary wide"
-                disabled={busy || !note.trim()}
-              >
-                저장하고 재계산
-              </button>
-            </form>
-          ) : dialog === 'evidence' ? (
+          {dialog === 'evidence' ? (
             <form
               onSubmit={async (e) => {
                 e.preventDefault();

@@ -15,7 +15,6 @@ import {
   chipStage,
   focusClock,
   focusCentis,
-  checkedInToday,
   type RaceTask,
 } from '../lib/race.ts';
 
@@ -172,19 +171,6 @@ void test('focusClock: 24시간 넘어도 시간 단위, 초과는 + 와 지난 
   assert.equal(focusClock(168 * H - 1000), '167:59:59');
   assert.equal(focusClock(0), '+00:00:00');
   assert.equal(focusClock(-(2 * H + 13 * 60000 + 5000)), '+02:13:05');
-});
-
-void test('checkedInToday: 담당자 기준, KST 날짜가 같을 때만', () => {
-  const tasks = [
-    { id: 1, person: 0 },
-    { id: 2, person: 1 },
-  ];
-  const now = Date.parse('2026-11-02T15:30:00.000Z'); // KST 11/3 00:30
-  const at = (task_id: number, created_at: string) => [{ task_id, created_at }];
-  assert.equal(checkedInToday(at(1, '2026-11-02T15:00:00.000Z'), tasks, 0, now), true); // KST 11/3 00:00
-  assert.equal(checkedInToday(at(1, '2026-11-02T14:59:59.000Z'), tasks, 0, now), false); // KST 11/2 23:59
-  assert.equal(checkedInToday(at(2, '2026-11-02T15:10:00.000Z'), tasks, 0, now), false); // 다른 사람 업무
-  assert.equal(checkedInToday(at(9, '2026-11-02T15:10:00.000Z'), tasks, 0, now), false); // 없는 업무
 });
 
 void test('focusCentis: 지금 초 안의 0.01초 두 자리, 초과도 지난 시간 기준', () => {

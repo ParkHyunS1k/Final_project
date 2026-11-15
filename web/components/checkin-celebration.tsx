@@ -10,7 +10,8 @@ export function celebrationFor(
   reducedMotion: boolean,
   rand: number,
 ): string | null {
-  if (action !== 'checkin' || reducedMotion) return null;
+  // 진행 보고(예전 checkin, 2026-11-16부터 오늘의 랩 기록 report) 저장 직후에만.
+  if ((action !== 'checkin' && action !== 'report') || reducedMotion) return null;
   return CELEBRATIONS[Math.floor(rand * CELEBRATIONS.length)];
 }
 

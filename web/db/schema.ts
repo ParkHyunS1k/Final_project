@@ -260,6 +260,13 @@ export const checkins = pgTable(
     note: text('note').notNull(),
     remaining: doublePrecision('remaining').notNull(),
     createdAt: timestamp('created_at', tz).notNull(),
+    // 오늘의 랩 기록(2026-11-16): 한 번에 보고한 여러 업무 줄을 묶는 id와 업무별 막힌 점. 예전 체크인은 둘 다 null.
+    reportId: text('report_id'),
+    blocker: text('blocker'),
+    // 보고 당시 담당자·작성자·완료 여부(0014). 담당자가 바뀌거나 업무가 나중에 완료돼도 그날 기록은 그대로 보인다.
+    person: integer('person'),
+    authorPerson: integer('author_person'),
+    done: boolean('done').notNull().default(false),
   },
   (t) => [index('idx_checkins_owner_createdAt').on(t.owner, t.createdAt)],
 ).enableRLS();
