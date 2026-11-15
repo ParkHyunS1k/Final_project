@@ -271,3 +271,20 @@ test('개발 현황: 상태를 받았는데 빠진 출처 이슈(업무당 3개 
   assert.doesNotMatch(html, /불러오는 중/);
   assert.match(html, /확인 안 함/);
 });
+
+test('업무 상세 체크인 이력에 그 업무의 막힌 점이 함께 보인다', async () => {
+  const { CheckinHistory } = await import(pathToFileURL(outfile).href);
+  const html = renderToString(
+    createElement(CheckinHistory, {
+      taskId: 1,
+      checkins: [
+        { id: 'c1', task_id: 1, note: '스키마 초안', remaining: 2, created_at: '2026-11-08T03:00:00.000Z', blocker: '토큰 만료 규칙 미정' },
+        { id: 'c2', task_id: 2, note: '다른 업무', remaining: 1, created_at: '2026-11-08T03:00:00.000Z' },
+      ],
+    }),
+  );
+  assert.match(html, /스키마 초안/);
+  assert.match(html, /막힌 점 · 토큰 만료 규칙 미정/);
+  assert.doesNotMatch(html, /다른 업무/);
+  assert.match(renderToString(createElement(CheckinHistory, { taskId: 3, checkins: [] })), /체크인이 없습니다/);
+});

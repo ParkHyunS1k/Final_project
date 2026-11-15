@@ -229,7 +229,7 @@ export async function exportProject(project: string, user: Identity) {
       .bind(project),
     db
       .prepare(
-        'SELECT task_id,note,remaining,created_at FROM sprint_checkins WHERE owner=? ORDER BY created_at',
+        'SELECT task_id,note,remaining,created_at,report_id,blocker,person,author_person,done FROM sprint_checkins WHERE owner=? ORDER BY created_at',
       )
       .bind(project),
   ]);

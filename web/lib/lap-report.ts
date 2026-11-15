@@ -29,11 +29,16 @@ export function parseReport(
   const seen = new Set<number>();
   const items = raw.map((value): ReportItem => {
     const i = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
-    const task = tasks.find((t) => t.id === i.taskId && !t.done);
-    if (!task || seen.has(task.id)) throw new PolicyError('진행 중인 업무를 한 번씩만 골라주세요.');
-    seen.add(task.id);
-    if (actor.role !== 'owner' && task.person !== actor.person)
+    const found = tasks.find((t) => t.id === i.taskId);
+    if (!found || seen.has(found.id)) throw new PolicyError('진행 중인 업무를 한 번씩만 골라주세요.');
+    seen.add(found.id);
+    if (actor.role !== 'owner' && found.person !== actor.person)
       throw new PolicyError('본인의 업무만 보고할 수 있습니다.', 403);
+    // 패널을 연 뒤 다른 곳에서 바뀐 업무는 덮어쓰지 않는다(업무별 버전). 다른 업무의 변경은 막지 않는다.
+    if (typeof i.version !== 'number' || i.version !== (found.changeVersion ?? 0))
+      throw new PolicyError(`"${found.title}"이(가) 그사이 바뀌었어요. 패널을 닫고 다시 열어주세요.`, 409);
+    if (found.done) throw new PolicyError('진행 중인 업무를 한 번씩만 골라주세요.');
+    const task = found;
     if (i.blocker != null && typeof i.blocker !== 'string') throw new PolicyError('막힌 점 형식이 올바르지 않습니다.');
     const blocker = typeof i.blocker === 'string' ? i.blocker.trim() : '';
     if (blocker.length > MAX_BLOCKER) throw new PolicyError(`막힌 점은 ${MAX_BLOCKER}자 이내로 입력해주세요.`);

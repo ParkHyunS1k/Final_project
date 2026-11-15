@@ -7,13 +7,16 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/
 import { taskRef, type Pull } from '@/lib/github-prs';
 import { seoulTime } from '@/lib/sprint';
 
-type Task = { id: number; title: string; remaining: number };
+type Task = { id: number; title: string; remaining: number; changeVersion?: number };
 export type RowStatus = 'progress' | 'blocked' | 'done';
 export type Row = { status: RowStatus; remaining: number; blocker: string; evidence: string };
 export type Chip = { number: number; label: string; text: string };
 export type ReportItemInput =
-  | { taskId: number; remaining: number; blocker?: string }
-  | { taskId: number; done: true; evidence: string };
+  | { taskId: number; version: number; remaining: number; blocker?: string }
+  | { taskId: number; version: number; done: true; evidence: string };
+// 서버 한도(lib/lap-report.ts MAX_REPORT_ITEMS, route.ts 요청 16,000자)보다 먼저 막는다.
+const MAX_ROWS = 20;
+const MAX_BODY = 15000;
 
 const STATUS: { id: RowStatus; label: string }[] = [
   { id: 'progress', label: '진행' },
@@ -31,10 +34,12 @@ export function quickHours(current: number, kind: 'minus' | 'half' | 'almost') {
 export function reportItems(rows: Record<number, Row>, tasks: Task[]): ReportItemInput[] {
   return tasks.map((t) => {
     const r = rows[t.id];
-    if (r.status === 'done') return { taskId: t.id, done: true, evidence: r.evidence.trim() };
+    // 패널을 연 시점의 업무 버전. 그사이 다른 곳에서 바뀐 업무는 서버가 409로 거절한다.
+    const version = t.changeVersion ?? 0;
+    if (r.status === 'done') return { taskId: t.id, version, done: true, evidence: r.evidence.trim() };
     return r.status === 'blocked'
-      ? { taskId: t.id, remaining: r.remaining, blocker: r.blocker.trim() }
-      : { taskId: t.id, remaining: r.remaining };
+      ? { taskId: t.id, version, remaining: r.remaining, blocker: r.blocker.trim() }
+      : { taskId: t.id, version, remaining: r.remaining };
   });
 }
 
@@ -46,6 +51,8 @@ export function blockReason(rows: Record<number, Row>, tasks: Task[], note: stri
     if (r.status === 'blocked' && !r.blocker.trim()) return `"${t.title}"의 막힌 점을 적어주세요.`;
     if (r.status === 'done' && r.evidence.trim().length < 5) return `"${t.title}"의 완료 근거를 5자 이상 적어주세요.`;
   }
+  if (JSON.stringify({ note, items: reportItems(rows, tasks) }).length > MAX_BODY)
+    return '내용이 너무 길어요. 근거나 메모를 줄여주세요.';
   return null;
 }
 
@@ -96,30 +103,34 @@ export function LapReportForm({
   error?: string;
   onSubmit: (body: { note: string; items: ReportItemInput[] }) => Promise<boolean>;
 }) {
-  const [rows, setRows] = useState(() => initial(tasks, initialRows));
+  // 연 시점의 업무로 고정한다(보는 동안 목록이 바뀌어도 입력이 깨지지 않게). 서버 한도만큼만.
+  const [shown] = useState(() => tasks.slice(0, MAX_ROWS));
+  const [rows, setRows] = useState(() => initial(shown, initialRows));
   const [note, setNote] = useState('');
-  if (!tasks.length) return <p className="lap-empty">보고할 업무가 없어요. 나에게 배정된 진행 중 업무가 생기면 여기서 한 번에 보고해요.</p>;
+  const hidden = tasks.length - shown.length;
+  if (!shown.length) return <p className="lap-empty">보고할 업무가 없어요. 나에게 배정된 진행 중 업무가 생기면 여기서 한 번에 보고해요.</p>;
   const set = (id: number, patch: Partial<Row>) => setRows((r) => ({ ...r, [id]: { ...r[id], ...patch } }));
-  const before = tasks.reduce((n, t) => n + t.remaining, 0);
-  const after = tasks.reduce((n, t) => n + (rows[t.id].status === 'done' ? 0 : rows[t.id].remaining), 0);
-  const reason = blockReason(rows, tasks, note);
+  const before = shown.reduce((n, t) => n + t.remaining, 0);
+  const after = shown.reduce((n, t) => n + (rows[t.id].status === 'done' ? 0 : rows[t.id].remaining), 0);
+  const reason = blockReason(rows, shown, note);
   return (
     <form
       className="lap-form"
       onSubmit={(e) => {
         e.preventDefault();
-        if (!reason) void onSubmit({ note: note.trim(), items: reportItems(rows, tasks) });
+        if (!reason) void onSubmit({ note: note.trim(), items: reportItems(rows, shown) });
       }}
     >
       <div className="lap-body">
         <section>
           <div className="lap-h">
-            <b>내 업무 {tasks.length}개</b>
+            <b>{hidden ? `내 업무 ${tasks.length}개 중 ${shown.length}개` : `내 업무 ${shown.length}개`}</b>
             <span>상태와 남은 시간만 고르면 돼요</span>
           </div>
           <ul className="lap-rows">
-            {tasks.map((t) => {
+            {shown.map((t) => {
               const r = rows[t.id];
+              const prText = evidenceFor?.(t.id) ?? '';
               return (
                 <li key={t.id} className={`lap-row is-${r.status}`}>
                   <div className="lap-title">
@@ -194,7 +205,19 @@ export function LapReportForm({
                   )}
                   {r.status === 'done' && (
                     <label className="lap-sub">
-                      완료 근거
+                      <span className="lap-sub-head">
+                        완료 근거
+                        {/* 연결 PR은 패널을 연 뒤 늦게 도착할 수 있어 버튼으로도 넣는다. */}
+                        {prText && !r.evidence.includes(prText) && (
+                          <button
+                            type="button"
+                            className="lap-insert"
+                            onClick={() => set(t.id, { evidence: (r.evidence.trim() ? r.evidence.trimEnd() + '\n' : '') + prText })}
+                          >
+                            머지된 PR 넣기
+                          </button>
+                        )}
+                      </span>
                       <textarea
                         rows={2}
                         maxLength={2000}

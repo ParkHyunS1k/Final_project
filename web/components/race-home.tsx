@@ -106,6 +106,10 @@ type FeedCheckin = {
   created_at: string;
   report_id?: string | null;
   blocker?: string | null;
+  /** 보고 당시 담당자·작성자·완료 여부(0014). 예전 체크인은 없어서 지금 담당자로 본다. */
+  person?: number | null;
+  author_person?: number | null;
+  done?: boolean;
 };
 const kstDay = (iso: string) => seoulTime(iso).slice(0, 10);
 const kstClock = (iso: string) => seoulTime(iso).slice(11, 16);
@@ -115,7 +119,7 @@ const kstStamp = (iso: string) => `${seoulTime(iso).slice(5, 10).replace('-', '/
 /** 이 사람(담당 업무 기준)의 마지막 보고. 오늘의 랩 기록이면 같은 report_id 줄을 모두, 예전 체크인이면 그 한 줄. */
 function lastReport(checkins: FeedCheckin[], tasks: Task[], person: number) {
   const mine = checkins
-    .filter((c) => tasks.find((t) => t.id === c.task_id)?.person === person)
+    .filter((c) => (c.person ?? tasks.find((t) => t.id === c.task_id)?.person) === person)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
   if (!mine.length) return null;
   const key = (c: FeedCheckin) => c.report_id ?? c.id ?? c.created_at;
@@ -170,7 +174,10 @@ export function TeamCheckins({
           const lane = focusTask(tasks, m.person) ?? laneTask(tasks, m.person);
           const rows = report?.rows ?? [];
           const left = rows.reduce((n, r) => n + (r.remaining ?? 0), 0);
-          const finished = rows.filter((r) => tasks.find((t) => t.id === r.task_id)?.done).length;
+          // 완료 수는 그 보고 당시 값(나중에 완료·재개돼도 그날 기록은 그대로).
+          const finished = rows.filter((r) => r.done).length;
+          const author = rows.find((r) => r.author_person != null && r.author_person !== m.person)?.author_person;
+          const authorName = author == null ? null : members.find((x) => x.person === author)?.display_name;
           return (
             <li key={m.person} className={`lap-feed-item${done ? ' is-today' : ''}`}>
               <span className="lap-feed-avatar" aria-hidden="true">
@@ -181,6 +188,7 @@ export function TeamCheckins({
                   <b>{m.display_name}</b>
                   {m.person === me.person && <small>나</small>}
                   <small>{done ? kstClock(report!.at) : report ? `마지막 기록 ${kstStamp(report.at)}` : '기록 없음'}</small>
+                  {done && authorName && <small>{`${authorName}님이 대신 기록`}</small>}
                   {active && !done && <span className="lap-feed-tag">아직 안 함</span>}
                   {active && done && rows.some((r) => r.blocker) && <span className="lap-feed-tag is-blocked">막힘</span>}
                 </div>

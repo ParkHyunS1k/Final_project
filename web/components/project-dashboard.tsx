@@ -399,7 +399,12 @@ function Dashboard({
     ? reportChoices(tasks, state.me, isOwner)
     : { open: [] as Task[], first: null };
   // 랩 기록은 내 업무만(팀장도). 대신 보고는 API에서만 허용한다.
-  const myOpen = state ? tasks.filter((t) => !t.done && t.person === state.me.person) : [];
+  // 패널은 20개까지라 마감이 가까운 순(마감 없는 업무는 뒤)으로 놓는다.
+  const myOpen = state
+    ? tasks
+        .filter((t) => !t.done && t.person === state.me.person)
+        .sort((a, b) => (a.dueAt ? Date.parse(a.dueAt) : Infinity) - (b.dueAt ? Date.parse(b.dueAt) : Infinity))
+    : [];
   const myName = state?.members.find((m) => m.person === state.me.person)?.display_name ?? '';
   const onClockZero = useCallback(() => {
     void load().catch(() => {});

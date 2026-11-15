@@ -1028,16 +1028,20 @@ async function lapTeam(owner, mate) {
     s = await change(owner, projectId, 'createTask', s, { title, person, remaining, dependsOn: [] });
   return { projectId, state: s };
 }
+// 패널을 연 시점의 업무 버전. 서버는 업무마다 이 값으로 그사이 바뀐 업무를 거절한다.
+let current = null;
+const ver = (id) => current.sprint.tasks.find((t) => t.id === id)?.changeVersion ?? 0;
 const reportRows = (projectId) =>
-  rows('SELECT task_id,note,remaining,report_id,blocker FROM sprint_checkins WHERE owner=? ORDER BY task_id', projectId);
+  rows('SELECT task_id,note,remaining,report_id,blocker,person,author_person,done FROM sprint_checkins WHERE owner=? ORDER BY task_id', projectId);
 
 test('오늘의 랩 기록: 내 업무 여러 개를 한 번에 저장하고, 한 보고로 묶이며 막힌 점은 업무별로 남는다', async () => {
   const { projectId, state } = await lapTeam('lap', 'lapmate');
+  current = state;
   const after = await change('lapmate', projectId, 'report', state, {
     note: '대조표 초안 제12조까지',
     items: [
-      { taskId: 1, remaining: 3 },
-      { taskId: 2, remaining: 4, blocker: '  스캔 PDF는 표가 깨진다  ' },
+      { taskId: 1, version: ver(1), remaining: 3 },
+      { taskId: 2, version: ver(2), remaining: 4, blocker: '  스캔 PDF는 표가 깨진다  ' },
     ],
   });
   assert.equal(after.sprint.revision, state.sprint.revision + 1);
@@ -1056,12 +1060,13 @@ test('오늘의 랩 기록: 내 업무 여러 개를 한 번에 저장하고, �
 
 test('오늘의 랩 기록: 완료는 근거와 함께 같은 보고에서 기록하고, 하나라도 틀리면 아무것도 저장하지 않는다', async () => {
   const { projectId, state } = await lapTeam('lapdone', 'lapdonemate');
+  current = state;
   const bad = await post('lapdonemate', 'report', state.sprint.revision, {
     projectId,
     note: '마무리',
     items: [
-      { taskId: 1, remaining: 1 },
-      { taskId: 2, done: true, evidence: 'x' },
+      { taskId: 1, version: ver(1), remaining: 1 },
+      { taskId: 2, version: ver(2), done: true, evidence: 'x' },
     ],
   });
   assert.equal(bad.status, 400);
@@ -1071,8 +1076,8 @@ test('오늘의 랩 기록: 완료는 근거와 함께 같은 보고에서 기�
   const after = await change('lapdonemate', projectId, 'report', state, {
     note: '마무리',
     items: [
-      { taskId: 1, remaining: 1 },
-      { taskId: 2, done: true, evidence: 'PR #12 수집 스크립트 https://github.com/t/a/pull/12', blocker: '무시된다' },
+      { taskId: 1, version: ver(1), remaining: 1 },
+      { taskId: 2, version: ver(2), done: true, evidence: 'PR #12 수집 스크립트 https://github.com/t/a/pull/12', blocker: '무시된다' },
     ],
   });
   const done = after.sprint.tasks.find((t) => t.id === 2);
@@ -1088,25 +1093,99 @@ test('오늘의 랩 기록: 완료는 근거와 함께 같은 보고에서 기�
 
 test('오늘의 랩 기록: 남의 업무는 보고할 수 없고(팀장은 가능), 형식이 틀리면 거절한다', async () => {
   const { projectId, state } = await lapTeam('lapguard', 'lapguardmate');
+  current = state;
   const send = (user, fields, revision = state.sprint.revision) =>
     post(user, 'report', revision, { projectId, note: '진행', ...fields });
-  const others = await send('lapguardmate', { items: [{ taskId: 3, remaining: 1 }] });
+  const others = await send('lapguardmate', { items: [{ taskId: 3, version: ver(3), remaining: 1 }] });
   assert.equal(others.status, 403);
   for (const [fields, status] of [
     [{ items: [] }, 400],
     [{ items: 'x' }, 400],
-    [{ items: [{ taskId: 1, remaining: 1 }, { taskId: 1, remaining: 2 }] }, 400],
-    [{ items: [{ taskId: 99, remaining: 1 }] }, 400],
-    [{ items: [{ taskId: 1, remaining: 1 }], note: ' ' }, 400],
-    [{ items: [{ taskId: 1, remaining: 1, blocker: 'a'.repeat(501) }] }, 400],
-    [{ items: [{ taskId: 1, remaining: -1 }] }, 400],
+    [{ items: [{ taskId: 1, version: ver(1), remaining: 1 }, { taskId: 1, version: ver(1), remaining: 2 }] }, 400],
+    [{ items: [{ taskId: 99, version: ver(99), remaining: 1 }] }, 400],
+    [{ items: [{ taskId: 1, version: ver(1), remaining: 1 }], note: ' ' }, 400],
+    [{ items: [{ taskId: 1, version: ver(1), remaining: 1, blocker: 'a'.repeat(501) }] }, 400],
+    [{ items: [{ taskId: 1, version: ver(1), remaining: -1 }] }, 400],
   ])
     assert.equal((await send('lapguardmate', fields)).status, status, JSON.stringify(fields).slice(0, 80));
-  assert.equal((await send('lapguardmate', { items: [{ taskId: 1, remaining: 1 }] }, state.sprint.revision - 1)).status, 409);
+  assert.equal((await send('lapguardmate', { items: [{ taskId: 1, version: ver(1), remaining: 1 }] }, state.sprint.revision - 1)).status, 409);
   assert.equal((await reportRows(projectId)).length, 0);
   // 팀장은 팀원 업무도 대신 보고할 수 있다(기존 진행 보고와 같은 규칙).
-  await change('lapguard', projectId, 'report', state, { note: '대신 보고', items: [{ taskId: 1, remaining: 2 }] });
+  await change('lapguard', projectId, 'report', state, { note: '대신 보고', items: [{ taskId: 1, version: ver(1), remaining: 2 }] });
   assert.equal((await reportRows(projectId)).length, 1);
+});
+
+test('오늘의 랩 기록: 패널을 연 뒤 다른 곳에서 바뀐 업무가 있으면 409로 거절하고 덮어쓰지 않는다', async () => {
+  const { projectId, state } = await lapTeam('lapstale', 'lapstalemate');
+  current = state;
+  const opened = { 1: ver(1), 2: ver(2) };
+  // 다른 세션이 업무 2의 남은 시간을 바꾼다(프로젝트 revision도 오른다).
+  const changed = await change('lapstalemate', projectId, 'taskDetails', state, { taskId: 2, status: 'in_progress', description: '', remaining: 2 });
+  const r = await post('lapstalemate', 'report', changed.sprint.revision, {
+    projectId,
+    note: '업무 1만 손댐',
+    items: [
+      { taskId: 1, version: opened[1], remaining: 4 },
+      { taskId: 2, version: opened[2], remaining: 6 },
+    ],
+  });
+  assert.equal(r.status, 409);
+  assert.match((await r.json()).error, /문서 수집/);
+  const after = await read('lapstale', projectId);
+  assert.equal(after.sprint.tasks.find((t) => t.id === 2).remaining, 2);
+  assert.equal(after.sprint.tasks.find((t) => t.id === 1).remaining, 5);
+  assert.equal((await reportRows(projectId)).length, 0);
+  // 다른 팀원의 무관한 변경(프로젝트 revision만 오름)은 막지 않는다.
+  current = after;
+  const ok = await post('lapstalemate', 'report', after.sprint.revision, {
+    projectId,
+    note: '다시 보고',
+    items: [{ taskId: 1, version: ver(1), remaining: 4 }],
+  });
+  assert.equal(ok.status, 200, await ok.clone().text());
+});
+
+test('오늘의 랩 기록: 보고 당시 담당자·작성자·완료 여부를 남겨 나중에 재배정·재개돼도 기록이 그대로다', async () => {
+  const { projectId, state } = await lapTeam('lapwho', 'lapwhomate');
+  current = state;
+  await change('lapwho', projectId, 'report', state, {
+    note: '팀장이 대신 기록',
+    items: [
+      { taskId: 1, version: ver(1), remaining: 2 },
+      { taskId: 2, version: ver(2), done: true, evidence: '수집 목록 시트 링크' },
+    ],
+  });
+  assert.deepEqual((await reportRows(projectId)).map((r) => [r.task_id, r.person, r.author_person, r.done]), [
+    [1, 1, 0, false],
+    [2, 1, 0, true],
+  ]);
+  const view = await read('lapwho', projectId);
+  assert.ok(view.checkins.every((c) => c.person === 1 && c.author_person === 0));
+  const exported = await (await scoped('lapwho', projectId, '&format=export')).json();
+  assert.ok(exported.checkins.some((c) => c.task_id === 2 && c.done === true && c.report_id && c.author_person === 0));
+});
+
+test('오늘의 랩 기록: 최근 60줄에 일부만 걸린 보고도 묶음 전체를 돌려준다', async () => {
+  const { projectId, state } = await lapTeam('lapcut', 'lapcutmate');
+  current = state;
+  await change('lapcutmate', projectId, 'report', state, {
+    note: '세 줄 중 두 줄',
+    items: [
+      { taskId: 1, version: ver(1), remaining: 4 },
+      { taskId: 2, version: ver(2), remaining: 5, blocker: '막힘' },
+    ],
+  });
+  // 더 최근 예전 체크인 59줄: 최근 60줄에는 위 보고의 한 줄만 걸린다.
+  const [first] = await rows('SELECT created_at FROM sprint_checkins WHERE owner=? ORDER BY created_at LIMIT 1', projectId);
+  await run('UPDATE sprint_checkins SET created_at=? WHERE owner=? AND task_id=2', new Date(Date.parse(first.created_at) - 1000).toISOString(), projectId);
+  for (let i = 0; i < 59; i++)
+    await run(
+      'INSERT INTO sprint_checkins(id,owner,task_id,note,remaining,created_at) VALUES(?,?,?,?,?,?)',
+      'old' + i, projectId, 3, '예전 체크인', 1, new Date(Date.parse(first.created_at) + (i + 1) * 1000).toISOString(),
+    );
+  const view = await read('lapcut', projectId);
+  const group = view.checkins.filter((c) => c.report_id);
+  assert.deepEqual(group.map((c) => c.task_id).sort(), [1, 2]);
 });
 
 // 빈 DB에도 전체 마이그레이션이 적용되는지는 이 파일 상단에서 확인한다.

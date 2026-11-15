@@ -14,8 +14,8 @@ const outfile = join(mkdtempSync(join(cache, 'pm-lap-')), 'lap-report.mjs');
 await build({ entryPoints: ['components/lap-report.tsx'], outfile, bundle: true, platform: 'node', format: 'esm', jsx: 'automatic', packages: 'external', alias: { '@': process.cwd() } });
 const { LapReportForm, quickHours, reportItems, prChips, blockReason } = await import(pathToFileURL(outfile).href);
 
-const task = (id, title, remaining) => ({ id, title, person: 1, remaining, dependsOn: [], done: false, status: 'in_progress' });
-const tasks = [task(4, '대조표 정리', 5), task(2, '문서 수집', 4), task(7, '체인 통합', 1.5)];
+const task = (id, title, remaining, changeVersion = 0) => ({ id, title, person: 1, remaining, dependsOn: [], done: false, status: 'in_progress', changeVersion });
+const tasks = [task(4, '대조표 정리', 5, 3), task(2, '문서 수집', 4), task(7, '체인 통합', 1.5, 1)];
 const row = (over = {}) => ({ status: 'progress', remaining: 1, blocker: '', evidence: '', ...over });
 const pull = (number, state, updatedAt, title = 'PR ' + number) => ({ number, title, state, branch: 'pm-7-x', author: 'a', url: `https://github.com/t/a/pull/${number}`, sha: '', updatedAt });
 
@@ -29,13 +29,13 @@ test('남은 시간 빠른 선택: -1시간(0 아래로 안 감), 절반(0.5 단
   assert.equal(quickHours(0, 'almost'), 0);
 });
 
-test('보낼 항목: 진행은 남은 시간, 막힘은 막힌 점 포함, 완료는 근거만', () => {
+test('보낼 항목: 패널을 연 시점의 업무 버전과, 진행은 남은 시간·막힘은 막힌 점·완료는 근거', () => {
   assert.deepEqual(
     reportItems({ 4: row({ remaining: 3 }), 2: row({ status: 'blocked', remaining: 4, blocker: '표가 깨짐' }), 7: row({ status: 'done', evidence: 'PR #12' }) }, tasks),
     [
-      { taskId: 4, remaining: 3 },
-      { taskId: 2, remaining: 4, blocker: '표가 깨짐' },
-      { taskId: 7, done: true, evidence: 'PR #12' },
+      { taskId: 4, version: 3, remaining: 3 },
+      { taskId: 2, version: 0, remaining: 4, blocker: '표가 깨짐' },
+      { taskId: 7, version: 1, done: true, evidence: 'PR #12' },
     ],
   );
 });
@@ -46,6 +46,11 @@ test('저장 막는 이유: 오늘 한 일 없음, 막힘인데 내용 없음, �
   assert.match(blockReason(ok, tasks, ' '), /오늘 한 일/);
   assert.match(blockReason({ ...ok, 2: row({ status: 'blocked' }) }, tasks, '진행'), /문서 수집.*막힌 점/);
   assert.match(blockReason({ ...ok, 7: row({ status: 'done', evidence: 'pr' }) }, tasks, '진행'), /체인 통합.*근거/);
+  // 서버 요청 크기(16,000자)를 넘기 전에 막는다.
+  const long = { 4: row({ status: 'done', evidence: 'a'.repeat(2000) }), 2: row({ status: 'done', evidence: 'b'.repeat(2000) }), 7: row({ status: 'done', evidence: 'c'.repeat(2000) }) };
+  const many = Array.from({ length: 6 }, (_, i) => task(100 + i, '업무' + i, 1));
+  const big = { ...long, ...Object.fromEntries(many.map((t) => [t.id, row({ status: 'done', evidence: 'd'.repeat(2000) })])) };
+  assert.match(blockReason(big, [...tasks, ...many], '진행'), /너무 길어요/);
 });
 
 test('GitHub 칩: 내 업무에 연결된 PR 중 오늘(KST) 움직인 것만, 번호 중복 없이', () => {
@@ -78,4 +83,22 @@ test('패널: 업무마다 줄, 막힘이면 막힌 점 칸, 완료면 근거 �
   assert.equal((html.match(/class="btn primary/g) ?? []).length, 1);
   const empty = renderToString(createElement(LapReportForm, { tasks: [], busy: false, onSubmit: async () => true }));
   assert.match(empty, /보고할 업무가 없어요/);
+});
+
+test('패널: 업무가 20개를 넘으면 앞의 20개만(서버 한도), 머지된 PR이 늦게 와도 근거에 넣는 버튼', () => {
+  const many = Array.from({ length: 22 }, (_, i) => task(i + 1, '업무 ' + (i + 1), 1));
+  const html = renderToString(createElement(LapReportForm, { tasks: many, busy: false, onSubmit: async () => true }));
+  assert.equal((html.match(/class="lap-row is-/g) ?? []).length, 20);
+  assert.match(html, /22개 중 20개/);
+  const done = renderToString(
+    createElement(LapReportForm, {
+      tasks,
+      initialRows: { 4: row(), 2: row(), 7: row({ status: 'done', evidence: '' }) },
+      evidenceFor: (id) => (id === 7 ? 'PR #12 LCEL 체인 연결 https://github.com/t/a/pull/12' : ''),
+      busy: false,
+      onSubmit: async () => true,
+    }),
+  );
+  assert.match(done, /머지된 PR 넣기/);
+  assert.equal((done.match(/머지된 PR 넣기/g) ?? []).length, 1);
 });

@@ -238,9 +238,10 @@ export async function responseState(owner: string, now = new Date()) {
     [
       db
         .prepare(
-          'SELECT id,task_id,note,remaining,created_at,report_id,blocker FROM sprint_checkins WHERE owner=? ORDER BY created_at DESC LIMIT 60',
+          // 최근 60줄 + 그 안에 한 줄이라도 걸린 보고 묶음 전체(묶음이 잘려 요약이 틀리지 않게).
+          'SELECT id,task_id,note,remaining,created_at,report_id,blocker,person,author_person,done FROM sprint_checkins c WHERE owner=? AND (id IN (SELECT id FROM sprint_checkins WHERE owner=? ORDER BY created_at DESC LIMIT 60) OR report_id IN (SELECT report_id FROM (SELECT report_id FROM sprint_checkins WHERE owner=? ORDER BY created_at DESC LIMIT 60) recent WHERE report_id IS NOT NULL)) ORDER BY created_at DESC',
         )
-        .bind(owner),
+        .bind(owner, owner, owner),
       db
         .prepare(
           'SELECT revision,action,detail,created_at FROM sprint_events WHERE owner=? ORDER BY revision DESC LIMIT 20',

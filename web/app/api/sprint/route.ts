@@ -445,9 +445,23 @@ export async function POST(request: Request) {
           items.flatMap((it) => [
             db
               .prepare(
-                'INSERT INTO sprint_checkins(id,owner,task_id,note,remaining,created_at,report_id,blocker) SELECT ?,owner,?,?,?,?,?,? FROM sprints WHERE owner=? AND mutation=?',
+                'INSERT INTO sprint_checkins(id,owner,task_id,note,remaining,created_at,report_id,blocker,person,author_person,done) SELECT ?,owner,?,?,?,?,?,?,?,?,? FROM sprints WHERE owner=? AND mutation=?',
               )
-              .bind(crypto.randomUUID(), it.task.id, note, it.remaining, timestamp, reportId, it.blocker, id, m),
+              .bind(
+                crypto.randomUUID(),
+                it.task.id,
+                note,
+                it.remaining,
+                timestamp,
+                reportId,
+                it.blocker,
+                // 보고 당시 담당자(재배정돼도 그날 기록은 그 사람 것)와 실제 작성자(팀장 대신 기록 구분).
+                it.task.person,
+                actor.person,
+                it.done,
+                id,
+                m,
+              ),
             bumpTaskVersion(id, m, it.task.id),
             ...(it.done
               ? cancelStatements(id, m, { kind: 'task', taskId: it.task.id, reason: '업무 완료' })

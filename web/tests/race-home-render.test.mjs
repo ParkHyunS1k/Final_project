@@ -125,6 +125,25 @@ void test('랩 기록 피드: 참여 중인 팀원만, 기록한 사람 먼저, 
   assert.match(rows[1], /마지막 기록 11\/01 12:00.*시안 초안/);
 });
 
+void test('랩 기록 피드: 보고 당시 담당자 기준(재배정돼도 그대로), 팀장이 대신 쓴 기록 표시, 완료 수는 보고 당시 값', () => {
+  const members = [
+    { display_name: '도윤', person: 0, left_at: null },
+    { display_name: '서연', person: 1, left_at: null },
+  ];
+  // 업무 1은 서연이 보고한 뒤 도윤에게 재배정됐고, 업무 2는 보고 뒤 완료됐다.
+  const tasks = [task(1, 0, 'DB 구축', NOW + H), task(2, 1, 'API', NOW + 2 * H, { done: true })];
+  const checkins = [
+    { id: 'c1', task_id: 1, note: '서연 기록', remaining: 3, created_at: at(NOW - 60000), report_id: 'rp_1', blocker: null, person: 1, author_person: 0, done: false },
+    { id: 'c2', task_id: 2, note: '서연 기록', remaining: 2, created_at: at(NOW - 60000), report_id: 'rp_1', blocker: null, person: 1, author_person: 0, done: false },
+  ];
+  const html = renderToString(createElement(TeamCheckins, { members, me: { person: 0 }, tasks, checkins, now: NOW, active: true }));
+  const rows = html.split('class="lap-feed-item').slice(1).map(text);
+  assert.match(rows[0], /서연.*도윤님이 대신 기록.*서연 기록/);
+  assert.doesNotMatch(rows[0], /완료 1/);
+  assert.match(rows[1], /도윤.*아직 안 함/);
+  assert.doesNotMatch(rows[1], /서연 기록/);
+});
+
 void test('랩 기록 피드: 기록이 없는 사람은 지금 업무(카운트다운과 같은 가장 가까운 마감)를 보인다', () => {
   const members = [{ display_name: '도윤', person: 0, left_at: null }];
   const tasks = [task(1, 0, '먼 업무', NOW + 100 * H), task(2, 0, '가까운 업무', NOW + H)];
