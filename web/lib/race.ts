@@ -135,18 +135,3 @@ export function focusCentis(msLeft: number) {
   return pad(Math.floor((ms % 1000) / 10));
 }
 
-// ponytail: 서버 상태의 checkins는 프로젝트 전체 최근 60줄(보고 한 번 = 업무 수만큼 줄). 넘치면 이른 보고가 빠진다. 필요하면 서버에서 멤버별 마지막 보고 시각을 내려준다.
-/** 오늘(KST) 이 사람이 담당한 업무에 진행 보고가 있는가. 팀장이 대신 보고한 경우도 담당자 기준으로 센다. */
-export function checkedInToday(
-  checkins: { task_id: number; created_at: string }[],
-  tasks: { id: number; person: number }[],
-  person: number,
-  nowMs: number,
-) {
-  const day = (iso: string) => seoulTime(iso).slice(0, 10);
-  const today = day(new Date(nowMs).toISOString());
-  return checkins.some(
-    (c) =>
-      tasks.find((t) => t.id === c.task_id)?.person === person && day(c.created_at) === today,
-  );
-}

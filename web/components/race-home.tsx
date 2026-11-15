@@ -4,7 +4,6 @@ import { DeadlineCalendar } from '@/components/deadline-calendar';
 import type { ProjectMeta } from '@/components/project-workspace';
 import { useFineServerNow, useServerNow } from '@/hooks/use-server-now';
 import {
-  checkedInToday,
   dueLabel,
   focusClock,
   focusCentis,
@@ -13,7 +12,7 @@ import {
   tension,
   waitReason,
 } from '@/lib/race';
-import type { Task as ServerTask } from '@/lib/sprint';
+import { seoulTime, type Task as ServerTask } from '@/lib/sprint';
 import type { Lifecycle } from '@/lib/sprint-policy';
 import type { Wire } from '@/lib/wire';
 
@@ -99,6 +98,32 @@ export function FocusCountdown({
   );
 }
 
+type FeedCheckin = {
+  id?: string;
+  task_id: number;
+  note?: string;
+  remaining?: number;
+  created_at: string;
+  report_id?: string | null;
+  blocker?: string | null;
+};
+const kstDay = (iso: string) => seoulTime(iso).slice(0, 10);
+const kstClock = (iso: string) => seoulTime(iso).slice(11, 16);
+const kstStamp = (iso: string) => `${seoulTime(iso).slice(5, 10).replace('-', '/')} ${kstClock(iso)}`;
+
+// ponytail: 서버 상태의 checkins는 프로젝트 전체 최근 60줄(보고 한 번 = 업무 수만큼 줄). 넘치면 오래된 '마지막 기록'이 빠진다. 필요하면 서버에서 멤버별 마지막 보고를 내려준다.
+/** 이 사람(담당 업무 기준)의 마지막 보고. 오늘의 랩 기록이면 같은 report_id 줄을 모두, 예전 체크인이면 그 한 줄. */
+function lastReport(checkins: FeedCheckin[], tasks: Task[], person: number) {
+  const mine = checkins
+    .filter((c) => tasks.find((t) => t.id === c.task_id)?.person === person)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  if (!mine.length) return null;
+  const key = (c: FeedCheckin) => c.report_id ?? c.id ?? c.created_at;
+  const head = mine[0];
+  return { at: head.created_at, note: head.note ?? '', rows: mine.filter((c) => key(c) === key(head)) };
+}
+
+// 오늘의 랩 기록 피드(2026-11-16). 체크인 여부만 보이던 목록을 서로의 오늘 기록을 읽는 피드로 바꿨다.
 export function TeamCheckins({
   members,
   me,
@@ -110,43 +135,80 @@ export function TeamCheckins({
   members: ProjectMeta['members'];
   me: ProjectMeta['me'];
   tasks: Task[];
-  checkins: { task_id: number; created_at: string }[];
+  checkins: FeedCheckin[];
   now: number;
-  /** 진행 중일 때만 오늘 체크인 여부를 묻는다. */
+  /** 진행 중일 때만 오늘 기록 여부를 묻는다. */
   active: boolean;
 }) {
+  const today = kstDay(new Date(now).toISOString());
+  const entries = members
+    .filter((m) => !m.left_at)
+    .map((m, order) => {
+      const report = lastReport(checkins, tasks, m.person);
+      return { m, order, report, today: !!report && kstDay(report.at) === today };
+    })
+    // 오늘 기록한 사람이 먼저(최근 순), 나머지는 원래 순서.
+    .sort((a, b) =>
+      a.today !== b.today ? (a.today ? -1 : 1) : a.today ? b.report!.at.localeCompare(a.report!.at) : a.order - b.order,
+    );
+  const reported = entries.filter((e) => e.today).length;
+  const blocked = entries.reduce((n, e) => n + (e.today ? e.report!.rows.filter((r) => r.blocker).length : 0), 0);
   return (
-    <section>
+    <section className="lap-feed">
       <div className="section-heading task-heading">
-        <h2>팀원 체크인 현황</h2>
-        <span className="tiny muted">오늘(KST) 진행 보고 기준</span>
+        <h2>오늘의 랩 기록</h2>
+        {active && (
+          <span className="tiny muted">
+            {`${reported} / ${entries.length}명 기록 · 오늘(KST)`}
+            {blocked > 0 && <b className="lap-feed-count">{`막힘 ${blocked}`}</b>}
+          </span>
+        )}
       </div>
-      <div className="race-checkins">
-        {members
-          .filter((m) => !m.left_at)
-          .map((m) => {
-            // 카운트다운과 같은 업무를 보여주고, 마감 미정만 남았으면 그 업무를 보여준다.
-            const lane = focusTask(tasks, m.person) ?? laneTask(tasks, m.person);
-            const ok = checkedInToday(checkins, tasks, m.person, now);
-            return (
-              <div key={m.person} className="race-checkin-row">
-                <b>
-                  {m.display_name}
-                  {m.person === me.person && <small> 나</small>}
-                </b>
-                <span className="race-checkin-task">
-                  {lane ? lane.title : '진행 중인 업무 없음'}
-                  {lane && <small>{dueLabel(lane.dueAt)}</small>}
-                </span>
-                {active && (
-                  <span className={`race-checkin-badge${ok ? ' ok' : ''}`}>
-                    {ok ? '오늘 체크인 완료' : '아직 체크인 안 함'}
-                  </span>
+      <ul className="lap-feed-list">
+        {entries.map(({ m, report, today: done }) => {
+          // 기록이 없으면 카운트다운과 같은 업무(가장 가까운 마감)를 보여준다.
+          const lane = focusTask(tasks, m.person) ?? laneTask(tasks, m.person);
+          const rows = report?.rows ?? [];
+          const left = rows.reduce((n, r) => n + (r.remaining ?? 0), 0);
+          const finished = rows.filter((r) => tasks.find((t) => t.id === r.task_id)?.done).length;
+          return (
+            <li key={m.person} className={`lap-feed-item${done ? ' is-today' : ''}`}>
+              <span className="lap-feed-avatar" aria-hidden="true">
+                {m.display_name.slice(0, 1)}
+              </span>
+              <div className="lap-feed-main">
+                <div className="lap-feed-who">
+                  <b>{m.display_name}</b>
+                  {m.person === me.person && <small>나</small>}
+                  <small>{done ? kstClock(report!.at) : report ? `마지막 기록 ${kstStamp(report.at)}` : '기록 없음'}</small>
+                  {active && !done && <span className="lap-feed-tag">아직 안 함</span>}
+                  {active && done && rows.some((r) => r.blocker) && <span className="lap-feed-tag is-blocked">막힘</span>}
+                </div>
+                {report?.note && <p className={done ? 'lap-feed-note' : 'lap-feed-note is-old'}>{report.note}</p>}
+                {done &&
+                  rows
+                    .filter((r) => r.blocker)
+                    .map((r) => (
+                      <p key={r.task_id} className="lap-feed-blocker">
+                        {`PM-${r.task_id} · ${r.blocker}`}
+                      </p>
+                    ))}
+                {done ? (
+                  <div className="lap-feed-facts">
+                    <span>{`업무 ${rows.length}개`}</span>
+                    <span>{`남은 ${left}h`}</span>
+                    {finished > 0 && <span>{`완료 ${finished}`}</span>}
+                  </div>
+                ) : (
+                  <p className="lap-feed-lane">
+                    {lane ? `지금 업무 · ${lane.title} · ${dueLabel(lane.dueAt)}` : '진행 중인 업무 없음'}
+                  </p>
                 )}
               </div>
-            );
-          })}
-      </div>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }

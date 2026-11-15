@@ -94,24 +94,38 @@ void test('카운트다운: 대기 중 문구 3가지', () => {
   assert.match(text(focus([task(1, 1, 'A', NOW + H)])), /배정된 내 업무 없음 · 대기 중/);
 });
 
-void test('체크인 현황: 참여 중인 팀원만, 지금 업무와 오늘 보고 여부, 내 줄 표시', () => {
+// 2026-11-16 오늘의 랩 기록 피드: 체크인 여부만 보이던 목록을 서로의 오늘 기록을 읽는 피드로.
+const at = (ms) => new Date(ms).toISOString();
+void test('랩 기록 피드: 참여 중인 팀원만, 기록한 사람 먼저, 오늘 한 일·업무별 막힘·남은 합계, 내 줄 표시', () => {
   const members = [
-    { display_name: '도윤', person: 0, left_at: null },
     { display_name: '서연', person: 1, left_at: null },
+    { display_name: '도윤', person: 0, left_at: null },
     { display_name: '나감', person: 2, left_at: '2026-11-01T00:00:00.000Z' },
   ];
-  const tasks = [task(1, 0, 'DB 구축', NOW + H), task(2, 1, '화면 시안', NOW + 2 * H)];
-  const checkins = [{ task_id: 1, created_at: new Date(NOW - 60000).toISOString() }];
+  const tasks = [task(1, 0, 'DB 구축', NOW + H), task(2, 0, 'API', NOW + 2 * H), task(3, 1, '화면 시안', NOW + 3 * H)];
+  const checkins = [
+    { id: 'c1', task_id: 1, note: '스키마 확정', remaining: 3, created_at: at(NOW - 60000), report_id: 'rp_1', blocker: null },
+    { id: 'c2', task_id: 2, note: '스키마 확정', remaining: 2, created_at: at(NOW - 60000), report_id: 'rp_1', blocker: '토큰 만료 규칙 미정' },
+    { id: 'c3', task_id: 3, note: '시안 초안', remaining: 4, created_at: at(NOW - 24 * H), report_id: null, blocker: null },
+  ];
   const html = renderToString(
     createElement(TeamCheckins, { members, me: { person: 0 }, tasks, checkins, now: NOW, active: true }),
   );
-  const rows = html.split('race-checkin-row').slice(1).map(text);
+  const all = text(html);
+  assert.match(all, /오늘의 랩 기록/);
+  assert.match(all, /1 \/ 2명 기록/);
+  assert.match(all, /막힘 1/);
+  const rows = html.split('class="lap-feed-item').slice(1).map(text);
   assert.equal(rows.length, 2);
-  assert.match(rows[0], /도윤.*나.*DB 구축.*오늘 체크인 완료/);
-  assert.match(rows[1], /서연.*화면 시안.*아직 체크인 안 함/);
+  assert.match(rows[0], /도윤.*나.*11:59.*스키마 확정/);
+  assert.match(rows[0], /PM-2 · 토큰 만료 규칙 미정/);
+  assert.match(rows[0], /업무 2개.*남은 5h/);
+  assert.doesNotMatch(rows[0], /스키마 확정.*스키마 확정/);
+  assert.match(rows[1], /서연.*아직 안 함/);
+  assert.match(rows[1], /마지막 기록 11\/01 12:00.*시안 초안/);
 });
 
-void test('체크인 현황: 지금 업무는 카운트다운과 같이 마감이 가장 가까운 업무', () => {
+void test('랩 기록 피드: 기록이 없는 사람은 지금 업무(카운트다운과 같은 가장 가까운 마감)를 보인다', () => {
   const members = [{ display_name: '도윤', person: 0, left_at: null }];
   const tasks = [task(1, 0, '먼 업무', NOW + 100 * H), task(2, 0, '가까운 업무', NOW + H)];
   const t = text(
@@ -123,14 +137,14 @@ void test('체크인 현황: 지금 업무는 카운트다운과 같이 마감�
   assert.doesNotMatch(t, /먼 업무/);
 });
 
-void test('체크인 현황: 진행 중이 아니면 체크인 여부 배지를 보여주지 않는다', () => {
+void test('랩 기록 피드: 진행 중이 아니면 기록 여부 표시를 하지 않는다', () => {
   const members = [{ display_name: '도윤', person: 0, left_at: null }];
   const t = text(
     renderToString(
       createElement(TeamCheckins, { members, me: { person: 0 }, tasks: [], checkins: [], now: NOW, active: false }),
     ),
   );
-  assert.doesNotMatch(t, /체크인 안 함|체크인 완료/);
+  assert.doesNotMatch(t, /아직 안 함|명 기록/);
 });
 
 void test('캘린더: 진행 중에만 칩 단계, 오늘 aria-current, 병목 표시 없음', () => {
