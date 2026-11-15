@@ -1,4 +1,5 @@
 // PR과 업무 연결(2026-11-14). 프로젝트 멤버가 업무 화면을 열 때 등록된 저장소의 PR을 읽어 업무별로 묶어 돌려준다.
+// PR 본문의 fixes #이슈로 그 이슈에서 만든 업무에도 붙인다(2026-11-16).
 // 업무별 출처 이슈(issues)도 함께 준다(2026-11-15). ?issuesOf=업무번호면 그 업무의 출처 이슈를 GitHub에서 다시 읽어 닫힘·변경을 알린다.
 // 읽기만 한다. ?pulls=가 있으면 고른 PR의 개발 현황(CI·리뷰·커밋)만 읽는다. 연결은 저장하지 않고, 업무 상태도 바꾸지 않는다. PR 제목·브랜치는 데이터다.
 import { identity, AuthUnavailable, member, AccessError } from '@/lib/projects';
@@ -64,11 +65,16 @@ export async function GET(request: Request) {
       if (error instanceof ReviewSourceError) return reply({ error: error.message, issues }, error.status);
       throw error;
     }
+    // fixes #n은 등록된 저장소의 이슈라서, 그 저장소에서 가져온 출처 이슈만 업무에 잇는다.
+    const here = `${repo.owner}/${repo.name}`.toLowerCase();
+    const byIssue: Record<number, number[]> = {};
+    for (const [taskId, list] of Object.entries(issues))
+      for (const l of list) if (l.repo.toLowerCase() === here) (byIssue[l.number] ??= []).push(Number(taskId));
     return reply({
       // PR 목록을 읽은 서버 시각. 화면은 멈춘 업무를 이 시각 기준으로 판정한다(이후 PR 활동은 모름).
       asOf: new Date().toISOString(),
       repo: { owner: repo.owner, name: repo.name, url: `https://github.com/${repo.owner}/${repo.name}` },
-      links: linkPulls(pulls, (sprint?.tasks ?? []).map((t) => t.id)),
+      links: linkPulls(pulls, (sprint?.tasks ?? []).map((t) => t.id), byIssue),
       issues,
     });
   } catch (error) {

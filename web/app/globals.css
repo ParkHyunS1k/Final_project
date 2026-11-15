@@ -3062,10 +3062,12 @@ textarea {
   display: inline-flex;
   margin-left: 2px;
 }
-.dev-panel {
+.dev-panel,
+.board-card-suggest {
   --merged: #8250df;
 }
-.dark .dev-panel {
+.dark .dev-panel,
+.dark .board-card-suggest {
   --merged: #a78bfa;
 }
 .dev-head {
@@ -3294,6 +3296,24 @@ textarea {
   font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-size: 11.5px;
   color: var(--gray-600);
+}
+/* fixes #n으로 붙은 PR (2026-11-16) */
+.dev-via {
+  padding: 0 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--merged) 14%, transparent);
+  color: var(--merged);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.board-card-suggest {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--merged);
 }
 .dev-pr.is-merged .pr-state.pr-merged {
   color: var(--merged);

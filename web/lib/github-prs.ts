@@ -1,4 +1,5 @@
 // PR과 업무 연결(2026-11-14). 프로젝트에 등록된 공개 저장소의 PR 중 제목·브랜치에 'PM-번호'가 있는 것을 그 업무에 붙인다.
+// 본문에 출처 이슈를 닫는 키워드(fixes #12 등)가 있으면 그 이슈에서 만든 업무에도 붙인다(2026-11-16).
 // 연결은 저장하지 않고 화면을 열 때 계산한다. 상태를 자동으로 바꾸지 않고 '진행 중'·'완료' 제안만 만든다.
 import {
   assertPublicRepo,
@@ -20,6 +21,8 @@ export type Pull = {
   /** 마지막 커밋. CI 결과를 찾을 때 쓴다. */
   sha: string;
   updatedAt: string;
+  /** 본문의 'fixes #12'처럼 이 PR이 닫는 같은 저장소 이슈 번호. */
+  fixes: number[];
 };
 export type Checks = 'success' | 'failure' | 'pending' | 'none';
 export type Review = 'approved' | 'changes_requested' | 'none';
@@ -30,6 +33,8 @@ export type PullDetail = { number: number; checks: Checks; review: Review; commi
 const PAGE_SIZE = 25;
 const MAX_PAGES = 4;
 const REF = /(?<![A-Za-z0-9])pm-(\d{1,6})(?![A-Za-z0-9])/gi;
+// GitHub가 PR 본문에서 이슈를 닫는 키워드와 같다. 'owner/repo#12'(다른 저장소)는 받지 않는다.
+const CLOSES = /(?<![A-Za-z0-9])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+#(\d{1,7})(?![A-Za-z0-9])/gi;
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const SHA = /^[0-9a-f]{40}$/i;
 /** 진행 중 업무가 이 시간 넘게 아무 활동이 없으면 '멈춤'(사용자 결정 2026-11-14). */
@@ -65,6 +70,16 @@ export function taskIdsIn(title: string, branch: string) {
   return ids;
 }
 
+/** PR 본문에서 닫는 키워드 뒤의 이슈 번호(중복 없이, 나온 순서). */
+export function closingIssues(body: string) {
+  const numbers: number[] = [];
+  for (const m of body.matchAll(CLOSES)) {
+    const n = Number(m[1]);
+    if (!numbers.includes(n)) numbers.push(n);
+  }
+  return numbers;
+}
+
 export function toPull(raw: Record<string, unknown>): Pull | null {
   const number = raw.number;
   if (typeof number !== 'number' || !Number.isInteger(number) || number < 1) return null;
@@ -80,6 +95,7 @@ export function toPull(raw: Record<string, unknown>): Pull | null {
     url: typeof raw.html_url === 'string' && raw.html_url.startsWith('https://github.com/') ? raw.html_url : '',
     sha: typeof head.sha === 'string' && SHA.test(head.sha) ? head.sha : '',
     updatedAt: typeof raw.updated_at === 'string' && !Number.isNaN(Date.parse(raw.updated_at)) ? raw.updated_at : '',
+    fixes: typeof raw.body === 'string' ? closingIssues(raw.body.slice(0, 65_536)) : [],
   };
 }
 
@@ -108,13 +124,17 @@ export async function listPulls(repo: Repo, options: FetchOptions): Promise<Pull
   return pulls;
 }
 
-/** 업무 id별 연결 PR. 프로젝트에 없는 업무 번호는 버린다. */
-export function linkPulls(pulls: Pull[], taskIds: number[]) {
+/**
+ * 업무 id별 연결 PR. 제목·브랜치의 PM-번호, 또는 본문 fixes #이슈(그 이슈에서 만든 업무, byIssue: 이슈 번호 → 업무 id).
+ * 프로젝트에 없는 업무 번호는 버리고, 같은 PR은 한 업무에 한 번만 붙인다.
+ */
+export function linkPulls(pulls: Pull[], taskIds: number[], byIssue: Record<number, number[]> = {}) {
   const known = new Set(taskIds);
   const links: Record<number, Pull[]> = {};
-  for (const p of pulls)
-    for (const id of taskIdsIn(p.title, p.branch))
-      if (known.has(id)) (links[id] ??= []).push(p);
+  for (const p of pulls) {
+    const ids = new Set([...taskIdsIn(p.title, p.branch), ...p.fixes.flatMap((n) => byIssue[n] ?? [])]);
+    for (const id of ids) if (known.has(id)) (links[id] ??= []).push(p);
+  }
   return links;
 }
 

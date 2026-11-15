@@ -27,6 +27,7 @@ import {
   branchName,
   DETAIL_MAX_PULLS,
   prSuggestion,
+  taskIdsIn,
   taskRef,
   type Checks,
   type Pull,
@@ -101,6 +102,16 @@ function Avatar({ login }: { login: string }) {
     </span>
   );
 }
+
+/** PR 주소의 저장소(소문자). fixes #n은 그 저장소의 이슈다. */
+function pullRepo(url: string) {
+  return url.match(/^https:\/\/github\.com\/([^/]+\/[^/]+)\/pull\//)?.[1].toLowerCase() ?? '';
+}
+/** 숫자로 끝나는 말 뒤 조사: 2·4·5·9로 끝나면 받침 없음(이/사/오/구). */
+function josa(n: number, [vowel, consonant]: [string, string]) {
+  return '2459'.includes(String(n).at(-1) ?? '') ? vowel : consonant;
+}
+const refs = (numbers: number[]) => numbers.map((n) => `#${n}`).join(', ');
 
 function Callout({
   tone,
@@ -238,8 +249,22 @@ export function PrPanel({
     .map((v) => new Date(v).toISOString())
     .sort()
     .at(-1);
-  // 이슈는 닫혔는데 업무는 남았다(GitHub 쪽에서 먼저 끝났거나 계획이 바뀜).
-  const closedIssues = task.done ? [] : (issueStatus ?? []).filter((s) => s.state === 'closed' && issues.some((l) => sameIssue(s, l)));
+  // 이 PR이 본문 fixes로 닫는 이 업무의 출처 이슈(같은 저장소만).
+  const fixedBy = (p: Pull) =>
+    issues.filter((l) => (p.fixes ?? []).includes(l.number) && pullRepo(p.url) === l.repo.toLowerCase()).map((l) => l.number);
+  const fixers = merged.filter((p) => fixedBy(p).length);
+  const solved = [...new Set(fixers.flatMap(fixedBy))].sort((a, b) => a - b);
+  const isSolved = (n: number) => solved.includes(n);
+  // 이슈는 닫혔는데 업무는 남았다(GitHub 쪽에서 먼저 끝났거나 계획이 바뀜). 머지된 PR이 닫은 이슈는 완료 제안이 대신 알린다.
+  const closedIssues = task.done
+    ? []
+    : (issueStatus ?? []).filter((s) => s.state === 'closed' && !isSolved(s.number) && issues.some((l) => sameIssue(s, l)));
+  const openLeft = solved.length
+    ? issues
+        .map((l) => l.number)
+        .filter((n) => !isSolved(n) && !(issueStatus ?? []).some((s) => s.number === n && s.state === 'closed'))
+    : [];
+  const lastFixer = fixers.at(-1)?.number ?? 0;
   const loading = (n: number, i: number) => !details[n] && !detailError && i < DETAIL_MAX_PULLS;
   return (
     <section className="detail-section dev-panel" aria-label="개발 현황">
@@ -262,7 +287,9 @@ export function PrPanel({
         </button>
       </header>
       <p className="detail-caption dev-hint">
-        PR 제목이나 브랜치 이름에 이 번호({taskRef(task.id)})를 넣으면 이 업무에 연결돼요.
+        {issues.length
+          ? `PR 제목·브랜치에 ${taskRef(task.id)}${josa(task.id, ['를', '을'])} 넣거나, 본문에 fixes #${issues[0].number}를 쓰면 이 업무에 연결돼요.`
+          : `PR 제목이나 브랜치 이름에 이 번호(${taskRef(task.id)})를 넣으면 이 업무에 연결돼요.`}
       </p>
 
       {!!issues.length && <IssueList issues={issues} status={issueStatus} error={issueError} />}
@@ -352,7 +379,12 @@ export function PrPanel({
         <Callout
           tone="done"
           icon={<GitMerge size={16} />}
-          title={`PR ${merged.map((p) => `#${p.number}`).join(', ')}이(가) 머지됐어요. 이걸 근거로 완료할까요?`}
+          title={
+            solved.length
+              ? `PR ${refs(fixers.map((p) => p.number))}${josa(lastFixer, ['가', '이'])} 머지되며 이슈 ${refs(solved)}${josa(solved.at(-1)!, ['를', '을'])} 해결했어요. 이걸 근거로 완료할까요?`
+              : `PR ${merged.map((p) => `#${p.number}`).join(', ')}이(가) 머지됐어요. 이걸 근거로 완료할까요?`
+          }
+          body={openLeft.length ? `이슈 ${refs(openLeft)}${josa(openLeft.at(-1)!, ['는', '은'])} 아직 열려 있어요.` : undefined}
           action={
             <button
               type="button"
@@ -386,6 +418,9 @@ export function PrPanel({
                       <span className="dev-pr-meta">
                         <span className={`pr-state pr-${p.state}`}>{PR_LABEL[p.state]}</span>
                         {p.branch && <code>{p.branch}</code>}
+                        {!taskIdsIn(p.title, p.branch).includes(task.id) && !!fixedBy(p).length && (
+                          <span className="dev-via">{`fixes ${refs(fixedBy(p))}${'036'.includes(String(fixedBy(p).at(-1)).at(-1)!) ? '으로' : '로'} 연결`}</span>
+                        )}
                         {p.author && (
                           <span className="dev-who">
                             <Avatar login={p.author} />@{p.author}
