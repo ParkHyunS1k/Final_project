@@ -623,6 +623,45 @@ test('5개 후보 중 2개만 승인하면 그 2개만 반영된다', async () =
   assert.ok(after.events.some((e) => e.action === 'aiApply'));
 });
 
+test('원문 목록은 첫 줄 미리보기와 반영된 항목 수(되돌린 것 제외)를 함께 준다', async () => {
+  const { projectId, state } = await startedTeam('srclist', 'srclistmate');
+  const s = await change('srclist', projectId, 'createTask', state, { title: 'A 업무', person: 0, remaining: 2, dependsOn: [] });
+  const body = '\n\n  회의록 11/9 — 검색 범위 정리\nA 업무 진행 중\n할 일: 새 업무 D, 2시간';
+  const sourceId = await paste('srclist', projectId, body);
+  const other = await paste('srclist', projectId, 'x'.repeat(200));
+  api.useModel(api.fakeModel());
+  const created = await propose('srclist', projectId, sourceId);
+  const statusA = created.proposal.changes.find((c) => c.kind === 'status' && c.taskId === 1);
+  const applied = await proposalRequest('srclist', {
+    action: 'apply',
+    projectId,
+    revision: s.sprint.revision,
+    proposalId: created.proposalId,
+    mutationId: mutation('srclist'),
+    selections: [{ changeId: statusA.changeId }],
+  });
+  assert.equal(applied.status, 200, await applied.clone().text());
+  let list = (await (await sourceGet('srclist', `project=${projectId}`)).json()).sources;
+  const mine = list.find((x) => x.id === sourceId);
+  assert.equal(mine.preview, '회의록 11/9 — 검색 범위 정리');
+  assert.equal(mine.applied, 1);
+  const long = list.find((x) => x.id === other);
+  assert.equal(long.preview.length, 80);
+  assert.equal(long.applied, 0);
+  // 되돌리면 반영 수에서 빠진다.
+  const { applicationId, state: afterApply } = await applied.json();
+  const reverted = await proposalRequest('srclist', {
+    action: 'revert',
+    projectId,
+    revision: afterApply.sprint.revision,
+    applicationId,
+    mutationId: mutation('srclist-revert'),
+  });
+  assert.equal(reverted.status, 200, await reverted.clone().text());
+  list = (await (await sourceGet('srclist', `project=${projectId}`)).json()).sources;
+  assert.equal(list.find((x) => x.id === sourceId).applied, 0);
+});
+
 test('같은 업무의 같은 값을 쓰는 항목은 함께 승인하지 못하고, 하나만 승인하면 바로 되돌릴 수 있다', async () => {
   const { projectId, state } = await startedTeam('overlap', 'overlapmate');
   const s = await change('overlap', projectId, 'createTask', state, {

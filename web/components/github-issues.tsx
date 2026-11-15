@@ -142,16 +142,21 @@ export function GithubIssues({
 
   // 팀원에게는 등록된 저장소만 보인다. 등록·가져오기는 팀장만.
   if (!canManage)
-    return repo ? (
+    return (
       <p className="tiny muted">
-        프로젝트 저장소: <a href={repo.url}>{`${repo.owner}/${repo.name}`}</a>
+        {repo && (
+          <>
+            프로젝트 저장소: <a href={repo.url}>{`${repo.owner}/${repo.name}`}</a> ·{' '}
+          </>
+        )}
+        GitHub 이슈 가져오기는 팀장만 할 수 있어요.
       </p>
-    ) : null;
+    );
 
   return (
     <section className="github-issues">
       <div className="section-heading">
-        <h2>GitHub 이슈 가져오기</h2>
+        <span className="tiny muted">{repo && !editing ? '등록된 저장소의 열린 이슈를 골라 가져오면 바로 변경안을 만들어요.' : '공개 저장소를 한 번 등록해 주세요.'}</span>
         {repo && !editing && (
           <span className="tiny muted">
             <a href={repo.url} target="_blank" rel="noreferrer">{`${repo.owner}/${repo.name}`}</a>{' '}

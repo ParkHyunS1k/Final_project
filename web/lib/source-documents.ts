@@ -120,7 +120,12 @@ export async function readSource(projectId: string, id: string) {
 export async function listSources(projectId: string, limit = 20) {
   const rows = await database()
     .prepare(
-      'SELECT id,author_id,origin,captured_at,hash,supersedes,created_at,length(body) AS size FROM source_documents WHERE project_id=? ORDER BY created_at DESC LIMIT ?',
+      // 목록에서 어떤 원문인지 알 수 있게 첫 줄(80자)과, 반영된 항목 수(되돌린 항목은 뺀다).
+      "SELECT id,author_id,origin,captured_at,hash,supersedes,created_at,length(body) AS size," +
+        " left(btrim(split_part(btrim(body, E' \\n\\r\\t'), E'\\n', 1), E' \\r\\t'), 80) AS preview," +
+        ' COALESCE((SELECT sum(jsonb_array_length(a.entries)) FROM ai_change_applications a WHERE a.source_id=s.id AND a.reverts IS NULL),0)' +
+        ' - COALESCE((SELECT sum(jsonb_array_length(a.entries)) FROM ai_change_applications a WHERE a.source_id=s.id AND a.reverts IS NOT NULL),0) AS applied' +
+        ' FROM source_documents s WHERE project_id=? ORDER BY created_at DESC LIMIT ?',
     )
     .bind(projectId, limit)
     .all<Record<string, unknown>>();
@@ -133,6 +138,8 @@ export async function listSources(projectId: string, limit = 20) {
     supersedes: (r.supersedes as string | null) ?? null,
     createdAt: r.created_at as Date,
     size: Number(r.size),
+    preview: text(r.preview),
+    applied: Math.max(0, Number(r.applied ?? 0)),
   }));
 }
 
