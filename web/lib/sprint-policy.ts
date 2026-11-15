@@ -119,6 +119,8 @@ export const RULES: Record<string, Rule> = {
   editTask: { scope: 'owner', states: ['draft', 'active'] },
   taskDetails: { scope: 'assignee', states: ['draft', 'active'] },
   checkin: { scope: 'assignee', states: ['draft', 'active'] },
+  // 오늘의 랩 기록: 여러 업무를 한 번에. 업무마다 담당자(또는 팀장)인지는 route에서 본다.
+  report: { scope: 'member', states: ['draft', 'active'] },
   task: { scope: 'assignee', states: ['draft', 'active'] },
   // 결과물
   deliverableEvidence: { scope: 'member', states: ['draft', 'active'] },

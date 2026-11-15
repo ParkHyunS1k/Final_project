@@ -260,6 +260,9 @@ export const checkins = pgTable(
     note: text('note').notNull(),
     remaining: doublePrecision('remaining').notNull(),
     createdAt: timestamp('created_at', tz).notNull(),
+    // 오늘의 랩 기록(2026-11-16): 한 번에 보고한 여러 업무 줄을 묶는 id와 업무별 막힌 점. 예전 체크인은 둘 다 null.
+    reportId: text('report_id'),
+    blocker: text('blocker'),
   },
   (t) => [index('idx_checkins_owner_createdAt').on(t.owner, t.createdAt)],
 ).enableRLS();

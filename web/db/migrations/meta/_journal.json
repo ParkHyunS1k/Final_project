@@ -92,6 +92,13 @@
       "when": 1794588367131,
       "tag": "0012_task_touched_at",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794757089832,
+      "tag": "0013_checkin_report",
+      "breakpoints": true
     }
   ]
 }

@@ -238,7 +238,7 @@ export async function responseState(owner: string, now = new Date()) {
     [
       db
         .prepare(
-          'SELECT id,task_id,note,remaining,created_at FROM sprint_checkins WHERE owner=? ORDER BY created_at DESC LIMIT 20',
+          'SELECT id,task_id,note,remaining,created_at,report_id,blocker FROM sprint_checkins WHERE owner=? ORDER BY created_at DESC LIMIT 60',
         )
         .bind(owner),
       db

@@ -35,6 +35,7 @@ import {
   taskCompletionCheck,
 } from '@/lib/deliverables';
 import { cancelStatements, scheduleStatements } from '@/lib/reminder-store';
+import { parseReport, reportDetail } from '@/lib/lap-report';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -422,6 +423,36 @@ export async function POST(request: Request) {
             ),
           bumpTaskVersion(id, m, t.id),
         ],
+        [...open],
+      );
+    } else if (b.action === 'report') {
+      // 오늘의 랩 기록(2026-11-16): 여러 업무의 남은 시간·완료·막힌 점을 한 트랜잭션으로.
+      const { note, items } = parseReport(b, s.tasks, actor);
+      for (const it of items) {
+        it.task.remaining = it.remaining;
+        if (it.done) {
+          it.task.done = true;
+          it.task.evidence = it.evidence;
+        }
+      }
+      const reportId = 'rp_' + crypto.randomUUID();
+      await save(
+        id,
+        s,
+        'report',
+        reportDetail(items),
+        (m) =>
+          items.flatMap((it) => [
+            db
+              .prepare(
+                'INSERT INTO sprint_checkins(id,owner,task_id,note,remaining,created_at,report_id,blocker) SELECT ?,owner,?,?,?,?,?,? FROM sprints WHERE owner=? AND mutation=?',
+              )
+              .bind(crypto.randomUUID(), it.task.id, note, it.remaining, timestamp, reportId, it.blocker, id, m),
+            bumpTaskVersion(id, m, it.task.id),
+            ...(it.done
+              ? cancelStatements(id, m, { kind: 'task', taskId: it.task.id, reason: '업무 완료' })
+              : []),
+          ]),
         [...open],
       );
     } else if (b.action === 'task') {

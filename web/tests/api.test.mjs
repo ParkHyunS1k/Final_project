@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-const { one, run, exec } = await setupTestDb();
+const { one, run, exec, rows } = await setupTestDb();
 const dir = mkdtempSync(join(tmpdir(), 'projectmate-api-test-'));
 const outfile = join(dir, 'route.mjs');
 await build({
@@ -1014,6 +1014,99 @@ test('기존 형태의 데이터는 새 스키마에서 값과 관계를 보존�
     Number((await one('SELECT count(*) AS n FROM project_policy WHERE project_id=?', 'legacy')).n),
     0,
   );
+});
+
+// ---- 오늘의 랩 기록(2026-11-16): 내 업무 여러 개를 한 번에 보고 ----
+async function lapTeam(owner, mate) {
+  const { projectId, state } = await startedTeam(owner, mate);
+  let s = state;
+  for (const [title, person, remaining] of [
+    ['대조표 정리', 1, 5],
+    ['문서 수집', 1, 6],
+    ['체인 통합', 0, 3],
+  ])
+    s = await change(owner, projectId, 'createTask', s, { title, person, remaining, dependsOn: [] });
+  return { projectId, state: s };
+}
+const reportRows = (projectId) =>
+  rows('SELECT task_id,note,remaining,report_id,blocker FROM sprint_checkins WHERE owner=? ORDER BY task_id', projectId);
+
+test('오늘의 랩 기록: 내 업무 여러 개를 한 번에 저장하고, 한 보고로 묶이며 막힌 점은 업무별로 남는다', async () => {
+  const { projectId, state } = await lapTeam('lap', 'lapmate');
+  const after = await change('lapmate', projectId, 'report', state, {
+    note: '대조표 초안 제12조까지',
+    items: [
+      { taskId: 1, remaining: 3 },
+      { taskId: 2, remaining: 4, blocker: '  스캔 PDF는 표가 깨진다  ' },
+    ],
+  });
+  assert.equal(after.sprint.revision, state.sprint.revision + 1);
+  assert.deepEqual(after.sprint.tasks.map((t) => t.remaining), [3, 4, 3]);
+  const rows = await reportRows(projectId);
+  assert.equal(rows.length, 2);
+  assert.ok(rows[0].report_id && rows[0].report_id === rows[1].report_id);
+  assert.deepEqual(rows.map((r) => [r.task_id, r.note, r.blocker]), [
+    [1, '대조표 초안 제12조까지', null],
+    [2, '대조표 초안 제12조까지', '스캔 PDF는 표가 깨진다'],
+  ]);
+  assert.match(after.events[0].detail, /진행 보고 · 업무 2개 · 막힘 1/);
+  // 화면이 읽는 최근 체크인에 보고 id와 막힌 점이 담긴다.
+  assert.ok(after.checkins.some((c) => c.task_id === 2 && c.blocker === '스캔 PDF는 표가 깨진다' && c.report_id === rows[0].report_id));
+});
+
+test('오늘의 랩 기록: 완료는 근거와 함께 같은 보고에서 기록하고, 하나라도 틀리면 아무것도 저장하지 않는다', async () => {
+  const { projectId, state } = await lapTeam('lapdone', 'lapdonemate');
+  const bad = await post('lapdonemate', 'report', state.sprint.revision, {
+    projectId,
+    note: '마무리',
+    items: [
+      { taskId: 1, remaining: 1 },
+      { taskId: 2, done: true, evidence: 'x' },
+    ],
+  });
+  assert.equal(bad.status, 400);
+  const unchanged = await read('lapdone', projectId);
+  assert.equal(unchanged.sprint.revision, state.sprint.revision);
+  assert.equal((await reportRows(projectId)).length, 0);
+  const after = await change('lapdonemate', projectId, 'report', state, {
+    note: '마무리',
+    items: [
+      { taskId: 1, remaining: 1 },
+      { taskId: 2, done: true, evidence: 'PR #12 수집 스크립트 https://github.com/t/a/pull/12', blocker: '무시된다' },
+    ],
+  });
+  const done = after.sprint.tasks.find((t) => t.id === 2);
+  assert.equal(done.done, true);
+  assert.equal(done.remaining, 0);
+  assert.match(done.evidence, /PR #12/);
+  assert.deepEqual((await reportRows(projectId)).map((r) => [r.task_id, r.remaining, r.blocker]), [
+    [1, 1, null],
+    [2, 0, null],
+  ]);
+  assert.match(after.events[0].detail, /업무 2개 · 완료 1/);
+});
+
+test('오늘의 랩 기록: 남의 업무는 보고할 수 없고(팀장은 가능), 형식이 틀리면 거절한다', async () => {
+  const { projectId, state } = await lapTeam('lapguard', 'lapguardmate');
+  const send = (user, fields, revision = state.sprint.revision) =>
+    post(user, 'report', revision, { projectId, note: '진행', ...fields });
+  const others = await send('lapguardmate', { items: [{ taskId: 3, remaining: 1 }] });
+  assert.equal(others.status, 403);
+  for (const [fields, status] of [
+    [{ items: [] }, 400],
+    [{ items: 'x' }, 400],
+    [{ items: [{ taskId: 1, remaining: 1 }, { taskId: 1, remaining: 2 }] }, 400],
+    [{ items: [{ taskId: 99, remaining: 1 }] }, 400],
+    [{ items: [{ taskId: 1, remaining: 1 }], note: ' ' }, 400],
+    [{ items: [{ taskId: 1, remaining: 1, blocker: 'a'.repeat(501) }] }, 400],
+    [{ items: [{ taskId: 1, remaining: -1 }] }, 400],
+  ])
+    assert.equal((await send('lapguardmate', fields)).status, status, JSON.stringify(fields).slice(0, 80));
+  assert.equal((await send('lapguardmate', { items: [{ taskId: 1, remaining: 1 }] }, state.sprint.revision - 1)).status, 409);
+  assert.equal((await reportRows(projectId)).length, 0);
+  // 팀장은 팀원 업무도 대신 보고할 수 있다(기존 진행 보고와 같은 규칙).
+  await change('lapguard', projectId, 'report', state, { note: '대신 보고', items: [{ taskId: 1, remaining: 2 }] });
+  assert.equal((await reportRows(projectId)).length, 1);
 });
 
 // 빈 DB에도 전체 마이그레이션이 적용되는지는 이 파일 상단에서 확인한다.
