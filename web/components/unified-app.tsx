@@ -1129,7 +1129,7 @@ export function UnifiedApp({
             <>
               <ProjectDashboard
                 key={selectedProject}
-                teamExtra={(projectId) => (
+                teamExtra={(projectId, reload) => (
                   // 공개 설정은 프로젝트 탭의 '팀 찾기와 홈 공개 모집에 공개' 하나뿐이다(2026-11-15 중복 정리).
                   <InterestList
                     busy={busy}
@@ -1143,7 +1143,7 @@ export function UnifiedApp({
                           userId,
                           revision: latest.projects.find((p) => p.id === projectId)?.revision,
                         });
-                        await refresh();
+                        await Promise.all([refresh(), reload()]);
                         setNotice(
                           '홈에서 확인할 수 있는 초대를 전달했습니다. 팀 합류는 상대방의 목표 확인 후 확정됩니다.',
                         );
