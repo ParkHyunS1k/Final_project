@@ -263,7 +263,7 @@ export function TaskCollection({
           <span className="collection-count">{tasks.length}개 업무</span>
           {owner && (
             <button
-              className="btn primary"
+              className="btn"
               disabled={busy || sprint.finished || !me.agreedAt}
               onClick={onAdd}
             >

@@ -38,15 +38,10 @@
   border-radius: 9px;
   font-size: 26px;
 }
-.hub-tagline {
-  font-size: 11px;
-  color: var(--muted-foreground);
-  margin: 13px 0 37px;
-  letter-spacing: -0.2px;
-}
 .hub-sidebar nav {
   display: grid;
   gap: 7px;
+  margin-top: 32px;
 }
 .hub-sidebar nav button {
   display: flex;
@@ -74,10 +69,16 @@
 }
 .hub-sidebar-bottom {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 9px;
   margin-top: auto;
   padding-top: 24px;
+}
+.hub-sidebar-bottom > .hub-user {
+  flex-basis: 100%;
+  padding: 6px 4px 10px;
+  color: var(--ink);
 }
 .hub-sidebar-bottom > a {
   font-size: 11px;
@@ -88,26 +89,6 @@
   margin-left: 234px;
   min-width: 0;
   flex: 1;
-}
-.hub-topbar {
-  height: 86px;
-  padding: 0 42px;
-  background: var(--background);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.hub-topbar > div {
-  display: grid;
-  gap: 3px;
-}
-.hub-topbar > div > span {
-  font-size: 10px;
-  color: var(--muted-foreground);
-}
-.hub-topbar b {
-  font-size: 15px;
 }
 .hub-user {
   display: flex;
@@ -153,6 +134,29 @@
 }
 .hub-main p {
   line-height: 1.8;
+}
+.hub-main .page-header h1 {
+  font-size: 22px;
+  line-height: 1.35;
+  letter-spacing: -0.6px;
+}
+.hub-main .page-header p {
+  line-height: 1.6;
+}
+/* 카드 제목 앞 아이콘(영어 소제목 대신) */
+.hub-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hub-card-title svg {
+  color: var(--heat-700);
+  flex-shrink: 0;
+}
+.hub-card-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--heat-700);
 }
 .hub-eyebrow {
   display: flex;
@@ -529,7 +533,8 @@
   color: var(--heat-800);
 }
 .hub-footer {
-  display: flex;
+  /* 데스크톱은 사이드바 아래 '서비스 소개'가 있어 숨긴다. 모바일에서만 보인다. */
+  display: none;
   gap: 20px;
   justify-content: space-between;
   font-size: 11px;
@@ -877,9 +882,6 @@
   .hub-body {
     margin-left: 205px;
   }
-  .hub-topbar {
-    padding: 0 27px;
-  }
   .hub-home-grid {
     grid-template-columns: minmax(0, 1fr) 270px;
     gap: 18px;
@@ -951,7 +953,6 @@
   .hub-brand > span {
     font-size: 23px;
   }
-  .hub-tagline,
   .hub-sidebar-bottom {
     display: none;
   }
@@ -973,10 +974,6 @@
   }
   .hub-body {
     margin-left: 0;
-  }
-  .hub-topbar {
-    height: 64px;
-    padding: 0 20px;
   }
   .hub-main {
     padding: 23px 17px 40px;
@@ -1026,6 +1023,7 @@
     padding: 9px;
   }
   .hub-footer {
+    display: flex;
     padding: 18px;
     flex-wrap: wrap;
   }
