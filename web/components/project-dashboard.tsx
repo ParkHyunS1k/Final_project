@@ -119,12 +119,15 @@ type State = ProjectMeta & {
 type Modal = 'checkin' | 'evidence' | null;
 export default function ProjectDashboard({
   onProject,
+  teamExtra,
 }: {
   onProject?: (id: string) => void;
+  /** 프로젝트 탭 팀원 구역 끝에 덧붙일 내용(통합 앱: 홈에서 관심을 보낸 사람). reload는 이 화면 상태를 다시 읽는다. */
+  teamExtra?: (projectId: string, reload: () => Promise<unknown>) => React.ReactNode;
 }) {
   return (
     <ProjectWorkspace embedded onSelect={onProject}>
-      {(id, nav) => <Dashboard key={id} projectId={id} nav={nav} />}
+      {(id, nav) => <Dashboard key={id} projectId={id} nav={nav} teamExtra={teamExtra} />}
     </ProjectWorkspace>
   );
 }
@@ -150,9 +153,11 @@ const PHASE: Record<Lifecycle, { label: string; note: string }> = {
 function Dashboard({
   projectId,
   nav,
+  teamExtra,
 }: {
   projectId: string;
   nav: WorkspaceNav;
+  teamExtra?: (projectId: string, reload: () => Promise<unknown>) => React.ReactNode;
 }) {
   const { view: tab, setView: setTab, mine, setMine } = nav;
   const [reviewing, setReviewing] = useState(false);
@@ -800,6 +805,8 @@ function Dashboard({
                     refresh={load}
                     writable={writable}
                   />
+                  {/* 초대는 프로젝트 revision을 올리므로 이 화면도 다시 읽어야 공개 설정이 409가 나지 않는다. */}
+                  {teamExtra?.(projectId, load)}
                 </section>
                 <section className="project-block">
                   <div className="section-heading">

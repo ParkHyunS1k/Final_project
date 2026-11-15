@@ -50,3 +50,9 @@ test('앱 셸에 슬로건 줄(로고 아래 문구·상단 바 문구·푸터 �
   for (const slogan of ['나의 다음 경험을 만드는 곳', '나의 성장 공간', '작게 시작하고, 경험으로 남기세요.'])
     assert.ok(!source.includes(slogan), slogan);
 });
+
+test('같은 공개 설정을 두 군데 두지 않는다: 홈 하단 "홈에서 팀 모집하기" 섹션이 없다', () => {
+  const source = readFileSync('components/unified-app.tsx', 'utf8');
+  assert.ok(!source.includes('홈에서 팀 모집하기'));
+  assert.ok(!source.includes("action: 'listing'"));
+});

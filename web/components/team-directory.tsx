@@ -272,6 +272,45 @@ export function MyRequests({
   );
 }
 
+export type Interest = {
+  user_id: string;
+  display_name: string;
+  email: string | null;
+  created_at: string;
+  invited: boolean;
+};
+
+// 팀장 전용: 홈 공개 모집에서 관심을 보낸 사람과 초대(관심 표시 → 팀장 초대). 공개 설정 바로 아래, 프로젝트 탭 팀원 구역에 둔다.
+export function InterestList({
+  interests,
+  busy,
+  onInvite,
+}: {
+  interests: Interest[];
+  busy: boolean;
+  onInvite: (userId: string) => void;
+}) {
+  if (!interests.length) return null;
+  return (
+    <div className="team-interests">
+      <h3>홈에서 관심을 보낸 사람 {interests.length}명</h3>
+      <p className="hint">초대를 보내면 상대방 홈에 초대가 도착해요. 팀 합류는 상대방이 목표를 확인한 뒤 확정돼요.</p>
+      <ul>
+        {interests.map((i) => (
+          <li key={i.user_id}>
+            <span>
+              {i.display_name} · {kst(i.created_at)} 관심
+            </span>
+            <button className="btn" disabled={busy || !i.email} onClick={() => onInvite(i.user_id)}>
+              {i.invited ? '초대 상태 확인·재발급' : '초대 보내기'}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 // 팀장 전용: 팀 목록 공개와 들어온 참여 신청 처리. 프로젝트 메뉴의 팀원 구역에 둔다.
 export function TeamListing({
   state,
@@ -321,7 +360,7 @@ export function TeamListing({
             )
           }
         />
-        팀 찾기 목록에 공개 (이름·목표·범위·완료 기준·인원만 보입니다)
+        팀 찾기와 홈 공개 모집에 공개 (이름·목표·범위·완료 기준·인원·기술 태그·남은 기간이 보입니다)
       </label>
       {requests.length > 0 && (
         <ul>
