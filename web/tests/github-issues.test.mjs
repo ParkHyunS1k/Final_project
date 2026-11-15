@@ -793,3 +793,19 @@ test('출처 이슈 상태: 저장소가 비공개로 바뀌면 이슈를 읽지
   await json(await prsGet('priv-owner', projectId, '&issuesOf=1'), 404);
   assert.ok(gh.calls.every((u) => !u.includes('/issues/')));
 });
+
+test('PR 목록을 못 읽어도(비공개 전환·한도) 출처 이슈 연결은 오류 응답에 담아 준다', async () => {
+  const projectId = await linkedTask('fail-owner', [ghIssue(6)]);
+  await api.setProjectRepo(projectId, 'fail-owner', repo, 0, new Date());
+  api.useGithub({ fetchImpl: fakeGithub({ visibility: 'private' }).fetchImpl });
+  const body = await json(await prsGet('fail-owner', projectId), 404);
+  assert.ok(body.error);
+  assert.deepEqual(body.issues, { 1: [{ repo: 'team/app', number: 6 }] });
+});
+
+test('출처 이슈 상태: 응답이 너무 커서 못 읽으면 없어진 이슈가 아니라 오류로 알린다', async () => {
+  const projectId = await linkedTask('huge-owner', [ghIssue(1)]);
+  api.useGithub({ fetchImpl: fakeGithub({ byNumber: { 1: issue(1, { body: 'x'.repeat(1_000_001) }) } }).fetchImpl });
+  const body = await json(await prsGet('huge-owner', projectId, '&issuesOf=1'), 502);
+  assert.ok(body.error);
+});

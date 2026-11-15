@@ -3344,25 +3344,26 @@ textarea {
   display: inline-flex;
   color: var(--gray-400);
 }
+.dev-issue.is-open {
+  --issue-tone: var(--good);
+}
+.dev-issue.is-closed-completed {
+  --issue-tone: var(--merged);
+}
 .dev-issue.is-open .dev-issue-icon,
-.dev-issue.is-open .dev-issue-state {
-  color: var(--good);
+.dev-issue.is-closed-completed .dev-issue-icon {
+  color: var(--issue-tone);
 }
-.dev-issue.is-closed-completed .dev-issue-icon,
-.dev-issue.is-closed-completed .dev-issue-state {
-  color: var(--merged);
-}
-.dev-issue.is-closed-not_planned .dev-issue-state,
-.dev-issue.is-closed-other .dev-issue-state,
-.dev-issue.is-missing .dev-issue-state {
-  color: var(--gray-500);
+/* 칩 글자는 .dev-signal과 같은 식으로 진하게 섞어 작은 글자 대비를 맞춘다. */
+.dev-issue .dev-issue-state {
+  color: color-mix(in srgb, var(--issue-tone, var(--gray-500)) 68%, var(--gray-900));
 }
 .dev-issue-tags {
   display: inline-flex;
   gap: 4px;
 }
-.dev-issue-changed {
-  color: var(--heat-700);
+.dev-issue .dev-issue-changed {
+  color: color-mix(in srgb, var(--heat-600) 68%, var(--gray-900));
 }
 .dev-issues .dev-error {
   margin: 0;

@@ -56,7 +56,14 @@ export async function GET(request: Request) {
     const issues = await taskIssueLinks(projectId);
     if (!repo) return reply({ repo: null, links: {}, issues });
     const sprint = await readSprint(projectId);
-    const pulls = await listPulls(repo, github);
+    let pulls;
+    try {
+      pulls = await listPulls(repo, github);
+    } catch (error) {
+      // 출처 이슈 연결은 DB 값이라 PR을 못 읽어도(비공개 전환·호출 한도) 함께 준다.
+      if (error instanceof ReviewSourceError) return reply({ error: error.message, issues }, error.status);
+      throw error;
+    }
     return reply({
       // PR 목록을 읽은 서버 시각. 화면은 멈춘 업무를 이 시각 기준으로 판정한다(이후 PR 활동은 모름).
       asOf: new Date().toISOString(),

@@ -122,11 +122,12 @@ export function TaskCollection({
     if (givenPulls || !projectId) return;
     let alive = true;
     apiFetch('/api/github-prs?project=' + encodeURIComponent(projectId))
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => r.json().catch(() => null))
       .then((body) => {
+        // 출처 이슈 연결은 PR을 못 읽은 오류 응답에도 들어 있다.
+        if (alive && body?.issues) setLinkedIssues(body.issues);
         if (!alive || !body?.links) return;
         setLoadedPulls(body.links);
-        setLinkedIssues(body.issues ?? {});
         setPullsClock(body.repo ? (body.asOf ?? null) : 'live');
       })
       .catch(() => {});
@@ -137,11 +138,16 @@ export function TaskCollection({
   const pulls = givenPulls ?? loadedPulls;
   const [issueStatus, setIssueStatus] = useState<{ taskId: number; list?: IssueStatus[]; error: string } | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
+  // 상세를 닫거나 다른 업무를 열면 지난 이슈 상태를 버린다(다시 읽는 동안 지난 '닫힘'으로 안내하지 않게).
+  const [statusFor, setStatusFor] = useState(selected);
+  if (statusFor !== selected) {
+    setStatusFor(selected);
+    setIssueStatus(null);
+  }
   const hasIssues = selected !== null && !!linkedIssues[selected]?.length;
   useEffect(() => {
     if (!hasIssues || selected === null || !projectId) return;
     let alive = true;
-    // 다시 열면 새로 읽는다. 읽는 동안은 지난 상태를 보이고(표시만 하고 제안은 하지 않는다), 실패하면 지운다.
     const fail = (message?: string) =>
       alive && setIssueStatus({ taskId: selected, error: message ?? '이슈 상태를 불러오지 못했어요.' });
     apiFetch(`/api/github-prs?project=${encodeURIComponent(projectId)}&issuesOf=${selected}`)

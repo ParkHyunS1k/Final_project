@@ -161,10 +161,14 @@ function IssueList({ issues, status, error }: { issues: IssueLink[]; status?: Is
                 <span className="dev-issue-tags">
                   <span className="dev-signal dev-issue-state">{issueLabel(s)}</span>
                   {s.changed && (
-                    <span className="dev-signal dev-issue-changed" title="가져온 뒤 GitHub에서 제목이나 본문이 수정됐어요">
+                    <span className="dev-signal dev-issue-changed" title="가져온 뒤 GitHub에서 제목이나 본문 앞부분(업무를 만들 때 AI가 읽은 부분)이 수정됐어요">
                       가져온 뒤 바뀜
                     </span>
                   )}
+                </span>
+              ) : status ? (
+                <span className="dev-signal is-loading" title="업무당 출처 이슈 3개까지만 상태를 확인해요">
+                  확인 안 함
                 </span>
               ) : (
                 !error && <span className="dev-signal is-loading">불러오는 중</span>
@@ -316,7 +320,7 @@ export function PrPanel({
         <Callout
           tone="idle"
           icon={<CircleCheck size={16} />}
-          title={`GitHub에서 이슈 ${closedIssues.map((s) => `#${s.number}`).join(', ')}이 닫혔어요.`}
+          title={`GitHub에서 닫힌 이슈가 있어요: ${closedIssues.map((s) => `#${s.number}`).join(', ')}`}
           body={
             closedIssues.some((s) => s.reason === 'not_planned')
               ? '계획 안 함으로 닫힌 이슈가 있어요. 이 업무를 계속할지 팀과 정해주세요.'

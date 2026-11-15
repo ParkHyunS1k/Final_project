@@ -139,7 +139,7 @@ export type IssueStatus = {
   url: string;
   state: 'open' | 'closed' | 'missing';
   reason: 'completed' | 'not_planned' | null;
-  /** 가져온 뒤 제목이나 본문이 바뀌었다. */
+  /** 가져온 뒤 제목이나 본문 앞부분(AI가 읽은 2,000자)이 바뀌었다. 그 뒤 변경은 업무 근거가 아니라 보지 않는다. */
   changed: boolean;
 };
 
@@ -154,6 +154,8 @@ export async function readIssueStatus(
   let raw: Record<string, unknown> | null;
   try {
     raw = (await getJson(`${repoPath(repo)}/issues/${number}`, options)) as Record<string, unknown> | null;
+    // null은 응답이 너무 커서 버린 것이다. 없어진 이슈와 구분한다.
+    if (raw === null) throw new ReviewSourceError('GitHub 응답이 너무 커서 이슈를 읽지 못했습니다.', 502);
   } catch (e) {
     if (e instanceof ReviewSourceError && e.status === 404) raw = null;
     else throw e;
