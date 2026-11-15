@@ -118,6 +118,47 @@ export async function readIssueSpans(sourceId: string): Promise<(IssueSpan & { r
   }));
 }
 
+type IssueTask = { taskId: number; sourceId: string; repo: string; number: number; start: number; end: number };
+
+/**
+ * 되돌리지 않은 '업무 생성' 적용 중 근거가 이슈 블록 안에 있던 것: 어느 업무가 어느 원문의 어느 이슈에서 왔는지.
+ * 업무에 따로 저장하지 않고 적용 기록과 이슈 위치에서 계산한다(업무 삭제는 되돌리기뿐이라 번호가 다른 업무로 넘어가지 않는다).
+ */
+async function issueTasks(projectId: string): Promise<IssueTask[]> {
+  const db = database();
+  const spans = await db
+    .prepare('SELECT source_id,repo,issue_number,start,"end" FROM source_issue_spans WHERE project_id=?')
+    .bind(projectId)
+    .all();
+  if (!spans.results.length) return [];
+  const apps = await db
+    .prepare('SELECT id,reverts,entries FROM ai_change_applications WHERE project_id=?')
+    .bind(projectId)
+    .all<{ id: string; reverts: string | null; entries: AppliedEntry[] }>();
+  // 되돌린 변경만 뺀다(일부 되돌리기면 남은 업무는 그대로 센다).
+  const reverted = new Set<string>();
+  for (const r of apps.results) if (r.reverts) for (const e of r.entries) reverted.add(`${r.reverts}:${e.changeId}`);
+  const found: IssueTask[] = [];
+  for (const a of apps.results)
+    for (const e of a.reverts ? [] : a.entries) {
+      if (reverted.has(`${a.id}:${e.changeId}`)) continue;
+      const m = e.kind === 'createTask' ? /^(.+)#(\d+)-(\d+)$/.exec(e.candidateKey ?? '') : null;
+      if (!m) continue;
+      const [sourceId, start, end] = [m[1], Number(m[2]), Number(m[3])];
+      for (const s of spans.results)
+        if (s.source_id === sourceId && start < Number(s.end) && end > Number(s.start))
+          found.push({
+            taskId: e.taskId,
+            sourceId,
+            repo: String(s.repo),
+            number: Number(s.issue_number),
+            start: Number(s.start),
+            end: Number(s.end),
+          });
+    }
+  return found;
+}
+
 /**
  * 같은 프로젝트·같은 저장소의 다른 원문에서, 되돌리지 않은 '업무 생성' 적용의 근거가 들어 있던 이슈 번호.
  * 다시 가져오기 중복 경고와 목록의 '이미 가져옴' 표시에 쓴다.
@@ -127,32 +168,45 @@ export async function importedIssueNumbers(
   repo: string,
   exceptSourceId: string | null,
 ): Promise<Set<number>> {
-  const db = database();
-  const spans = await db
-    .prepare(
-      // GitHub 저장소 이름은 대소문자를 구분하지 않는다.
-      'SELECT source_id,issue_number,start,"end" FROM source_issue_spans WHERE project_id=? AND lower(repo)=lower(?) AND source_id<>?',
-    )
-    .bind(projectId, repo, exceptSourceId ?? '')
-    .all();
-  const numbers = new Set<number>();
-  if (!spans.results.length) return numbers;
-  const apps = await db
-    .prepare('SELECT id,reverts,entries FROM ai_change_applications WHERE project_id=?')
-    .bind(projectId)
-    .all<{ id: string; reverts: string | null; entries: AppliedEntry[] }>();
-  // 되돌린 변경만 뺀다(일부 되돌리기면 남은 업무는 그대로 센다).
-  const reverted = new Set<string>();
-  for (const r of apps.results) if (r.reverts) for (const e of r.entries) reverted.add(`${r.reverts}:${e.changeId}`);
-  for (const a of apps.results)
-    for (const e of a.reverts ? [] : a.entries) {
-      if (reverted.has(`${a.id}:${e.changeId}`)) continue;
-      const m = e.kind === 'createTask' ? /^(.+)#(\d+)-(\d+)$/.exec(e.candidateKey ?? '') : null;
-      if (!m) continue;
-      const [, sourceId, start, end] = [m[0], m[1], Number(m[2]), Number(m[3])] as const;
-      for (const s of spans.results)
-        if (s.source_id === sourceId && start < Number(s.end) && end > Number(s.start))
-          numbers.add(Number(s.issue_number));
-    }
-  return numbers;
+  // GitHub 저장소 이름은 대소문자를 구분하지 않는다.
+  return new Set(
+    (await issueTasks(projectId))
+      .filter((t) => t.repo.toLowerCase() === repo.toLowerCase() && t.sourceId !== exceptSourceId)
+      .map((t) => t.number),
+  );
+}
+
+/** 업무 번호별 출처 이슈(저장소·번호, 중복 없이 번호 순). */
+export async function taskIssueLinks(projectId: string): Promise<Record<number, { repo: string; number: number }[]>> {
+  const links: Record<number, { repo: string; number: number }[]> = {};
+  for (const t of await issueTasks(projectId)) {
+    const list = (links[t.taskId] ??= []);
+    if (!list.some((l) => l.repo.toLowerCase() === t.repo.toLowerCase() && l.number === t.number))
+      list.push({ repo: t.repo, number: t.number });
+  }
+  for (const list of Object.values(links)) list.sort((a, b) => a.number - b.number);
+  return links;
+}
+
+/** 한 업무의 출처 이슈와 가져올 때의 이슈 블록(가져온 뒤 바뀌었는지 비교용). */
+export async function taskIssueBlocks(
+  projectId: string,
+  taskId: number,
+): Promise<{ repo: string; number: number; block: string }[]> {
+  const mine = (await issueTasks(projectId)).filter((t) => t.taskId === taskId);
+  if (!mine.length) return [];
+  const ids = [...new Set(mine.map((t) => t.sourceId))];
+  const rows = await database()
+    .prepare(`SELECT id,body FROM source_documents WHERE project_id=? AND id IN (${ids.map(() => '?').join(',')})`)
+    .bind(projectId, ...ids)
+    .all<{ id: string; body: string }>();
+  const bodies = new Map(rows.results.map((r) => [r.id, r.body]));
+  const seen = new Set<string>();
+  return mine
+    .sort((a, b) => a.number - b.number)
+    .filter((t) => {
+      const key = `${t.repo.toLowerCase()}#${t.number}`;
+      return !seen.has(key) && seen.add(key);
+    })
+    .map((t) => ({ repo: t.repo, number: t.number, block: (bodies.get(t.sourceId) ?? '').slice(t.start, t.end) }));
 }

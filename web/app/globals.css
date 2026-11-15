@@ -3292,6 +3292,81 @@ textarea {
 .dev-empty span {
   font-size: 12.5px;
 }
+/* 출처 이슈 (2026-11-15). GitHub 이슈 색 규칙: 열림 초록, 완료로 닫힘 보라, 계획 안 함 회색 */
+.dev-issues {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+.dev-issues-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gray-500);
+}
+.detail-section .dev-issues ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--gray-200);
+  border-radius: 9px;
+}
+.dev-issue {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  font-size: 13.5px;
+}
+.dev-issue + .dev-issue {
+  border-top: 1px solid var(--gray-100);
+}
+.dev-issue a {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--gray-900);
+  text-decoration: none;
+}
+.dev-issue a:hover .dev-issue-title {
+  text-decoration: underline;
+}
+.dev-issue-num {
+  margin-right: 6px;
+  color: var(--gray-500);
+  font-variant-numeric: tabular-nums;
+}
+.dev-issue-title {
+  font-weight: 600;
+}
+.dev-issue-icon {
+  display: inline-flex;
+  color: var(--gray-400);
+}
+.dev-issue.is-open .dev-issue-icon,
+.dev-issue.is-open .dev-issue-state {
+  color: var(--good);
+}
+.dev-issue.is-closed-completed .dev-issue-icon,
+.dev-issue.is-closed-completed .dev-issue-state {
+  color: var(--merged);
+}
+.dev-issue.is-closed-not_planned .dev-issue-state,
+.dev-issue.is-closed-other .dev-issue-state,
+.dev-issue.is-missing .dev-issue-state {
+  color: var(--gray-500);
+}
+.dev-issue-tags {
+  display: inline-flex;
+  gap: 4px;
+}
+.dev-issue-changed {
+  color: var(--heat-700);
+}
+.dev-issues .dev-error {
+  margin: 0;
+}
 .detail-section .dev-error {
   margin-top: 8px;
   font-size: 12.5px;
@@ -3312,6 +3387,12 @@ textarea {
   }
   .dev-callout {
     grid-template-columns: auto minmax(0, 1fr);
+  }
+  .dev-issue {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+  .dev-issue-tags {
+    grid-column: 2;
   }
   .dev-callout .btn {
     grid-column: 1 / -1;
