@@ -349,7 +349,6 @@ export function CareerWorkspace({
       <Content className="cf-main">
         <div className="cf-intro">
           <div>
-            <p className="eyebrow">YOUR NEXT EXPERIENCE</p>
             <h1>
               나의 경험에서,
               <br />
@@ -429,7 +428,6 @@ export function CareerWorkspace({
             <section className="cf-card">
               <div className="cf-card-heading">
                 <div>
-                  <p className="eyebrow">01 · PROFILE</p>
                   <h2>경험과 목표를 알려주세요</h2>
                 </div>
                 {profile && (
@@ -619,7 +617,6 @@ export function CareerWorkspace({
             </section>
             <div className="cf-stack">
               <section className="cf-card">
-                <p className="eyebrow">EVIDENCE, NOT A SCORE</p>
                 <h2>나의 역량 프로필</h2>
                 {profile ? (
                   <>
@@ -717,7 +714,6 @@ export function CareerWorkspace({
           <section>
             <div className="cf-section-heading">
               <div>
-                <p className="eyebrow">02 · NEXT PROJECT</p>
                 <h2>기여하면서 성장하는 7일</h2>
                 <p>
                   직접 설계한 학습 프로젝트입니다. 공개 모집 공고가 아니며,
@@ -880,11 +876,6 @@ export function CareerWorkspace({
           <>
             <div className="cf-section-heading">
               <div>
-                <p className="eyebrow">
-                  {section === 'team'
-                    ? '03 · TEAM & TASKS'
-                    : '04 · EXPERIENCE LOOP'}
-                </p>
                 <h2>
                   {section === 'team'
                     ? '각자의 강점을, 팀의 실행으로'

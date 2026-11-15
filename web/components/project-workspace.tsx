@@ -716,7 +716,7 @@ export function TeamInvites({
             maxLength={254}
           />
         </label>
-        <button className="btn primary" disabled={busy || !writable}>
+        <button className="btn" disabled={busy || !writable}>
           초대 링크 만들기
         </button>
       </form>

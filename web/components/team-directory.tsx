@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/supabase-browser';
 import { restrictionMessage, type RestrictionView } from '@/lib/score';
+import { PageHeader } from './page-header';
 
 export type Team = {
   projectId: string;
@@ -114,12 +115,11 @@ export function TeamDirectory({ restriction = null }: { restriction?: Restrictio
   const pending = (projectId: string) =>
     requests.find((r) => r.projectId === projectId && r.status === 'pending');
   return (
-    <section className="project-panel team-directory">
-      <h1>팀 찾기</h1>
-      <p>
-        팀장이 공개한 팀 중 지금 합류할 수 있는 팀입니다. 준비 중인 팀과 시작 후 24시간이 지나지 않은
-        팀이 보입니다. 참여 신청 후 팀장이 승인하면 팀원이 됩니다.
-      </p>
+    <section className="team-directory">
+      <PageHeader
+        title="팀 찾기"
+        description="팀장이 공개한 팀 중 지금 합류할 수 있는 팀이에요. 준비 중이거나 시작 후 24시간이 지나지 않은 팀이 보이고, 참여 신청을 팀장이 승인하면 팀원이 돼요."
+      />
       {restriction && (
         <output className="hint restriction-hint">
           {restrictionMessage(restriction, '참여 신청할')}

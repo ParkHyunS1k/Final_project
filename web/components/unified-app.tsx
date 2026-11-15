@@ -15,6 +15,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { TeamDirectory } from './team-directory';
+import { PageHeader } from './page-header';
 import { ProjectCreate } from './project-create';
 import { CareerWorkspace } from './career-workspace';
 import { GithubLink } from './github-link';
@@ -410,7 +411,6 @@ export function UnifiedApp({
         >
           <span>p.</span> projectmate
         </button>
-        <p className="hub-tagline">나의 다음 경험을 만드는 곳</p>
         <nav aria-label="주 메뉴">
           {MAIN_NAV.map((item) => (
             <button
@@ -437,9 +437,13 @@ export function UnifiedApp({
           ))}
         </nav>
         <div className="hub-sidebar-bottom">
+          <button className="hub-user" onClick={() => navigate('profile')}>
+            <span>{data?.name.slice(0, 1) || <UserRound size={17} />}</span>
+            {data?.name || '마이페이지'}
+          </button>
           <ThemeToggle />
           <button
-            className="btn"
+            className="btn ghost"
             onClick={() => void act(signOut)}
             aria-label="로그아웃"
           >
@@ -449,16 +453,6 @@ export function UnifiedApp({
         </div>
       </aside>
       <div className="hub-body">
-        <header className="hub-topbar">
-          <div>
-            <span>나의 성장 공간</span>
-            <b>{PERSONAL.includes(tab) ? '마이페이지' : TITLES[tab]}</b>
-          </div>
-          <button className="hub-user" onClick={() => navigate('profile')}>
-            <span>{data?.name.slice(0, 1) || <UserRound size={17} />}</span>
-            {data?.name || '마이페이지'}
-          </button>
-        </header>
         <main className={'hub-main' + (showWork ? ' hub-main-work' : '')}>
           {error && (
             <div className="hub-alert" role="alert">
@@ -479,15 +473,15 @@ export function UnifiedApp({
           {notice && <output className="hub-notice">{notice}</output>}
           {PERSONAL.includes(tab) && (
             <>
-              <div className="hub-heading">
-                <div>
-                  <p className="hub-eyebrow">MY GROWTH</p>
-                  <h1>경험을 한 곳에, 다음 기회까지.</h1>
-                </div>
-                <button className="btn" onClick={() => navigate('jobs')}>
-                  관심 공고 {jobs.length}개 <ArrowRight size={16} />
-                </button>
-              </div>
+              <PageHeader
+                title="마이페이지"
+                description="이력서·포트폴리오·경험 기록을 모아 다음 프로젝트와 공고로 이어요."
+                actions={
+                  <button className="btn" onClick={() => navigate('jobs')}>
+                    관심 공고 {jobs.length}개 <ArrowRight size={16} />
+                  </button>
+                }
+              />
               <nav className="hub-tabs" aria-label="마이페이지 메뉴">
                 {PERSONAL.map((p) => (
                   <button
@@ -551,7 +545,6 @@ export function UnifiedApp({
                 <>
                   <section className="hub-hero">
                     <div>
-                      <p className="hub-eyebrow">YOUR NEXT EXPERIENCE</p>
                       <h1>
                         오늘의 작은 도전이,
                         <br />
@@ -751,10 +744,9 @@ export function UnifiedApp({
                     </div>
                     <aside className="hub-home-side">
                       <section className="hub-card">
-                        <p className="hub-eyebrow">
-                          <Flame size={15} /> DAILY CHECK-IN
-                        </p>
-                        <h2>오늘, 어떻게 보내셨나요?</h2>
+                        <h2 className="hub-card-title">
+                          <Flame size={16} aria-hidden="true" /> 오늘, 어떻게 보내셨나요?
+                        </h2>
                         <p>
                           잘 된 날도 막힌 날도 기록해요.
                           <br />
@@ -835,10 +827,9 @@ export function UnifiedApp({
                         )}
                       </section>
                       <section className="hub-card hub-growth">
-                        <p className="hub-eyebrow">
-                          <Trophy size={15} /> MY MOMENTUM
-                        </p>
-                        <h2>학습 기록</h2>
+                        <h2 className="hub-card-title">
+                          <Trophy size={16} aria-hidden="true" /> 학습 기록
+                        </h2>
                         <div className="hub-stat-row">
                           <div>
                             <b>
@@ -911,19 +902,15 @@ export function UnifiedApp({
           )}
           {tab === 'templates' && (
             <>
-              <div className="hub-heading">
-                <div>
-                  <p className="hub-eyebrow">PICK YOUR NEXT PROJECT</p>
-                  <h1>고르고, 크기를 맞추고, 시작하세요.</h1>
-                  <p>
-                    랜덤 생성 대신 검토된 학습 템플릿 20개. 이름과 할 일을 직접
-                    쓰지 않아도 돼요.
-                  </p>
-                </div>
-                <button className="btn" onClick={() => navigate('create')}>
-                  직접 만들기 <ArrowRight size={16} />
-                </button>
-              </div>
+              <PageHeader
+                title="프로젝트 찾기"
+                description="검토된 학습 템플릿 20개에서 고르고, 크기를 맞춰 바로 시작해요."
+                actions={
+                  <button className="btn" onClick={() => navigate('create')}>
+                    직접 만들기 <ArrowRight size={16} />
+                  </button>
+                }
+              />
               <div className="hub-filter">
                 <button
                   className={!filter ? 'selected' : ''}
@@ -989,7 +976,7 @@ export function UnifiedApp({
                           </p>
                         ) : null}
                         <button
-                          className="btn wide"
+                          className="btn ghost wide"
                           onClick={() => {
                             setChosen(t.id);
                             setLevel(1);
@@ -1019,7 +1006,7 @@ export function UnifiedApp({
                 {scoped && (
                   <aside className="hub-card hub-builder" id="hub-builder">
                     <div className="hub-card-top">
-                      <span className="hub-eyebrow">MAKE IT YOURS</span>
+                      <span className="hub-card-label">크기 맞추기</span>
                       <button
                         className="hub-text-button"
                         onClick={() => setChosen('')}
@@ -1275,7 +1262,7 @@ export function UnifiedApp({
               <div className="hub-grid">
                 {portfolios.map((p) => (
                   <article className="hub-card" key={p.id}>
-                    <span className="hub-eyebrow">PRIVATE PORTFOLIO</span>
+                    <span className="hub-card-label">비공개 포트폴리오</span>
                     <h3>{p.payload.title}</h3>
                     <p className="hub-excerpt">
                       {p.payload.text ||
@@ -1335,21 +1322,15 @@ export function UnifiedApp({
           )}
           {tab === 'jobs' && (
             <>
-              <div className="hub-heading">
-                <div>
-                  <p className="hub-eyebrow">FIND YOUR NEXT OPPORTUNITY</p>
-                  <h1>가고 싶은 곳에서, 다음 경험을 찾으세요.</h1>
-                  <p>
-                    공고를 찾아 저장하고, 요구 역량을 내 경험과 비교해보세요.
-                  </p>
-                </div>
-                <button
-                  className="btn primary"
-                  onClick={() => newRecord('job')}
-                >
-                  공고 저장하기
-                </button>
-              </div>
+              <PageHeader
+                title="공고 찾기"
+                description="공고를 찾아 저장하고, 요구 역량을 내 경험과 비교해요."
+                actions={
+                  <button className="btn" onClick={() => newRecord('job')}>
+                    공고 저장하기
+                  </button>
+                }
+              />
               <section className="hub-card">
                 <h2>Jooble에서 공고를 검색해보세요.</h2>
                 <p className="hub-note">
@@ -1594,7 +1575,6 @@ export function UnifiedApp({
           )}
         </main>
         <footer className="hub-footer">
-          작게 시작하고, 경험으로 남기세요.{' '}
           <Link href="/">ProjectMate 소개</Link>
         </footer>
       </div>
