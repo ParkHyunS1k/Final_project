@@ -15,7 +15,7 @@ async function load(entry) {
   await build({ entryPoints: [entry], outfile, bundle: true, platform: 'node', format: 'esm', jsx: 'automatic', packages: 'external', alias: { '@': process.cwd() } });
   return import(pathToFileURL(outfile).href);
 }
-const { ProposalReview, proposalSummary } = await load('components/change-review.tsx');
+const { ProposalReview, proposalSummary, followSaved, InputTabs } = await load('components/change-review.tsx');
 const { SourceList } = await load('components/source-paste.tsx');
 const text = (html) => html.replace(/<!-- -->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 
@@ -49,7 +49,7 @@ const members = [
 ];
 
 test('요약 계산: 원문 사실·AI 추정 수, 선택한 새 업무·바뀌는 업무 수, 남은 공수 변화(편집 반영)', () => {
-  assert.deepEqual(proposalSummary(changes, { c1: true, c3: true }, {}), {
+  assert.deepEqual(proposalSummary(changes, { c1: true, c3: true }, {}, tasks), {
     total: 4,
     fact: 2,
     estimate: 2,
@@ -59,8 +59,53 @@ test('요약 계산: 원문 사실·AI 추정 수, 선택한 새 업무·바뀌�
     hours: 8,
   });
   // 사용자가 공수를 고치면 그 값으로 센다.
-  assert.equal(proposalSummary(changes, { c1: true }, { c1: { remaining: 3 } }).hours, 3);
+  assert.equal(proposalSummary(changes, { c1: true }, { c1: { remaining: 3 } }, tasks).hours, 3);
+  // 완료 보고는 그 업무의 남은 공수만큼 줄고, 같은 업무의 여러 변경은 업무 하나로 센다.
+  const more = [
+    ...changes,
+    change({ changeId: 'c5', kind: 'complete', taskId: 3, newKey: null, before: { done: false }, after: { done: true, evidence: 'PR #1' } }),
+    change({ changeId: 'c6', kind: 'status', taskId: 3, newKey: null, before: { status: 'todo' }, after: { status: 'in_progress' } }),
+  ];
+  const sum = proposalSummary(more, { c5: true, c6: true }, {}, tasks);
+  assert.equal(sum.hours, -4);
+  assert.equal(sum.changed, 1);
 });
+
+test('저장 뒤 이어지는 단계: 원문 조회가 실패하면 분석하지 않고, 저장은 됐다고 알린다', async () => {
+  const calls = [];
+  const steps = {
+    refresh: async () => calls.push('refresh'),
+    open: async () => {
+      calls.push('open');
+      throw new Error('원문을 불러오지 못했습니다.');
+    },
+    analyze: async () => calls.push('analyze'),
+  };
+  await assert.rejects(followSaved('s9', steps), /원문은 저장했어요.*원문을 불러오지 못했습니다/);
+  assert.deepEqual(calls, ['refresh', 'open']);
+  calls.length = 0;
+  await followSaved('s9', { ...steps, open: async () => calls.push('open') });
+  assert.deepEqual(calls, ['refresh', 'open', 'analyze']);
+});
+
+test('원문 넣기 탭: 두 패널을 모두 유지(입력이 사라지지 않게)하고 탭-패널을 잇고, 선택한 탭만 Tab 순서에', () => {
+  const html = renderToString(
+    createElement(InputTabs, {
+      tab: 'paste',
+      onTab: () => {},
+      paste: createElement('textarea', { id: 'source-body' }),
+      github: createElement('p', null, 'GitHub 패널'),
+    }),
+  );
+  assert.match(html, /id="ai-tab-paste"[^>]*aria-controls="ai-panel-paste"|aria-controls="ai-panel-paste"[^>]*id="ai-tab-paste"/);
+  assert.match(html, /<div id="ai-panel-github"[^>]*role="tabpanel"[^>]*hidden=""/);
+  assert.doesNotMatch(html, /<div id="ai-panel-paste"[^>]*hidden/);
+  assert.match(html, /aria-labelledby="ai-tab-paste"/);
+  assert.match(html, /id="source-body"/);
+  assert.match(html, /GitHub 패널/);
+  assert.match(html, /id="ai-tab-github"[^>]*tabindex="-1"|tabindex="-1"[^>]*id="ai-tab-github"/);
+});
+
 
 test('검토 화면: 종류별 묶음, 바뀌는 값은 취소선→새 값, AI 추정 값 표시, 막힌 항목은 흐리고 못 고름, 근거는 접기, 반영 버튼 하나', () => {
   const html = renderToString(

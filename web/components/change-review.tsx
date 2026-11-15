@@ -118,15 +118,17 @@ export function proposalSummary(
   changes: Change[],
   selected: Record<string, boolean>,
   edits: Record<string, Record<string, unknown>>,
+  tasks: { id: number; remaining: number }[] = [],
 ) {
   const num = (v: unknown) => (typeof v === 'number' ? v : 0);
   const chosen = changes.filter((c) => selected[c.changeId]);
   const created = chosen.filter((c) => c.kind === 'createTask').length;
-  // ponytail: 완료 보고로 0이 되는 공수는 세지 않는다(완료는 공수 변화보다 근거 확인이 핵심).
   const hours = chosen.reduce((n, c) => {
     const after = { ...c.after, ...edits[c.changeId] };
     if (c.kind === 'createTask') return n + num(after.remaining);
     if (c.kind === 'remaining') return n + num(after.remaining) - num(c.before.remaining);
+    // 완료 보고는 서버가 남은 공수를 0으로 만든다.
+    if (c.kind === 'complete') return n - num(tasks.find((t) => t.id === c.taskId)?.remaining);
     return n;
   }, 0);
   return {
@@ -135,9 +137,92 @@ export function proposalSummary(
     estimate: changes.filter((c) => c.basis !== 'fact').length,
     selected: chosen.length,
     created,
-    changed: chosen.length - created,
+    // 같은 업무의 여러 변경(상태·공수)은 업무 하나로 센다.
+    changed: new Set(chosen.filter((c) => c.kind !== 'createTask').map((c) => c.taskId)).size,
     hours,
   };
+}
+
+/**
+ * 원문을 저장한 뒤 이어지는 단계: 목록 새로고침 → 원문 열기 → 변경안 만들기. 앞 단계가 실패하면 멈추고,
+ * 원문은 이미 저장됐다고 알린다(다시 붙여넣어 중복 저장하지 않게).
+ */
+export async function followSaved(
+  id: string,
+  steps: { refresh: () => Promise<unknown>; open: (id: string) => Promise<unknown>; analyze: (id: string) => Promise<unknown> },
+) {
+  try {
+    await steps.refresh();
+    await steps.open(id);
+    await steps.analyze(id);
+  } catch (e) {
+    throw new Error(`원문은 저장했어요. 변경안은 만들지 못했어요: ${(e as Error).message} 최근 원문에서 다시 시도할 수 있어요.`);
+  }
+}
+
+const TABS = [
+  ['paste', '붙여넣기'],
+  ['github', 'GitHub 이슈'],
+] as const;
+type InputTab = (typeof TABS)[number][0];
+
+/** 원문 넣는 방법 탭. 두 패널을 모두 그려 두고 숨겨서 탭을 바꿔도 쓰던 입력이 남는다. 좌우 화살표로 이동. */
+export function InputTabs({
+  tab,
+  onTab,
+  paste,
+  github,
+  locked,
+  extra,
+}: {
+  tab: InputTab;
+  onTab: (tab: InputTab) => void;
+  paste: React.ReactNode;
+  github: React.ReactNode;
+  /** 수정본을 붙여넣는 중이면 붙여넣기만. */
+  locked?: boolean;
+  extra?: React.ReactNode;
+}) {
+  return (
+    <>
+      <div className="ai-tabs" role="tablist" aria-label="원문 넣는 방법">
+        {TABS.map(([id, label], i) => (
+          <button
+            key={id}
+            id={`ai-tab-${id}`}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            aria-controls={`ai-panel-${id}`}
+            tabIndex={tab === id ? 0 : -1}
+            disabled={locked && id !== 'paste'}
+            onClick={() => onTab(id)}
+            onKeyDown={(e) => {
+              if (locked || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
+              const next = TABS[(i + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length][0];
+              onTab(next);
+              document.getElementById(`ai-tab-${next}`)?.focus();
+            }}
+          >
+            {label}
+          </button>
+        ))}
+        {extra}
+      </div>
+      {TABS.map(([id]) => (
+        <div
+          key={id}
+          id={`ai-panel-${id}`}
+          className="ai-tab-panel"
+          role="tabpanel"
+          aria-labelledby={`ai-tab-${id}`}
+          hidden={tab !== id}
+        >
+          {id === 'paste' ? paste : github}
+        </div>
+      ))}
+    </>
+  );
 }
 
 type ReviewProps = {
@@ -297,14 +382,15 @@ export function ProposalReview(props: ReviewProps) {
         </button>
       </p>
     );
-  const sum = proposalSummary(proposal.changes, selected, edits);
+  const sum = proposalSummary(proposal.changes, selected, edits, props.tasks);
   const created = proposal.changes.filter((c) => c.kind === 'createTask');
   const changed = proposal.changes.filter((c) => c.kind !== 'createTask');
-  const group = (title: string, items: Change[]) =>
+  const changedTasks = new Set(changed.map((c) => c.taskId)).size;
+  const group = (title: string, items: Change[], count: number) =>
     !!items.length && (
       <section className="ai-group">
         <h4>
-          {title} <span>{items.length}</span>
+          {title} <span>{count}</span>
         </h4>
         <ul className="ai-list">
           {items.map((c) => (
@@ -326,7 +412,7 @@ export function ProposalReview(props: ReviewProps) {
             [
               ['all', `전체 ${sum.total}`],
               ['new', `새 업무 ${created.length}`],
-              ['change', `바뀌는 업무 ${changed.length}`],
+              ['change', `바뀌는 업무 ${changedTasks}`],
             ] as const
           ).map(([id, label]) => (
             <button key={id} type="button" aria-pressed={filter === id} onClick={() => setFilter(id)}>
@@ -335,8 +421,8 @@ export function ProposalReview(props: ReviewProps) {
           ))}
         </fieldset>
       </div>
-      {filter !== 'change' && group('새 업무', created)}
-      {filter !== 'new' && group('바뀌는 업무', changed)}
+      {filter !== 'change' && group('새 업무', created, created.length)}
+      {filter !== 'new' && group('바뀌는 업무', changed, changedTasks)}
       <div className="ai-footbar">
         <p>{`선택 ${sum.selected}건 · 새 업무 ${sum.created} · 바뀌는 업무 ${sum.changed} · 남은 공수 ${sum.hours >= 0 ? '+' : ''}${sum.hours}h`}</p>
         <button className="btn ghost" disabled={busy || !writable} onClick={onReanalyze}>
@@ -425,48 +511,62 @@ export function ChangeReview({
     }
   }
 
+  // 실패를 삼키지 않는다(호출한 쪽이 다음 단계를 멈추게).
+  async function fetchSource(id: string) {
+    const data = (await call(`/api/sources?project=${encodeURIComponent(projectId)}&source=${encodeURIComponent(id)}`)) as {
+      source: { body: string };
+      duplicates: { id: string }[];
+      issueSpans?: { authorLogin: string; authorIsMember: boolean }[];
+    };
+    setSourceId(id);
+    setSourceBody(data.source.body);
+    setDuplicates(data.duplicates);
+    setIssueSpans(data.issueSpans ?? []);
+    setProposal(null);
+    setRevising(null);
+  }
+
+  async function makeProposal(id: string) {
+    const data = (await call('/api/change-proposals', { action: 'create', projectId, sourceId: id })) as {
+      proposal: Proposal;
+      error: string;
+    };
+    setProposal(data.proposal);
+    setSelected(Object.fromEntries(data.proposal.changes.filter((c) => !c.blocked).map((c) => [c.changeId, false])));
+    setEdits({});
+    if (data.error) setError(data.error);
+  }
+
+  const MADE = '변경안을 만들었습니다. 아직 아무것도 반영되지 않았습니다.';
+
   async function openSource(id: string) {
-    await run(async () => {
-      const data = (await call(
-        `/api/sources?project=${encodeURIComponent(projectId)}&source=${encodeURIComponent(id)}`,
-      )) as {
-        source: { body: string };
-        duplicates: { id: string }[];
-        issueSpans?: { authorLogin: string; authorIsMember: boolean }[];
-      };
-      setSourceId(id);
-      setSourceBody(data.source.body);
-      setDuplicates(data.duplicates);
-      setIssueSpans(data.issueSpans ?? []);
-      setProposal(null);
-      setRevising(null);
-    });
+    await run(() => fetchSource(id));
   }
 
   async function createProposal(id = sourceId) {
     setAnalyzing(true);
     try {
-      await run(async () => {
-        const data = (await call('/api/change-proposals', {
-          action: 'create',
-          projectId,
-          sourceId: id,
-        })) as { proposal: Proposal; error: string };
-        setProposal(data.proposal);
-        setSelected(Object.fromEntries(data.proposal.changes.filter((c) => !c.blocked).map((c) => [c.changeId, false])));
-        setEdits({});
-        if (data.error) setError(data.error);
-      }, '변경안을 만들었습니다. 아직 아무것도 반영되지 않았습니다.');
+      await run(() => makeProposal(id), MADE);
     } finally {
       setAnalyzing(false);
     }
   }
 
-  // 원문을 열고 바로 변경안까지(버튼 한 번).
-  async function openAndAnalyze(id: string) {
-    await refresh();
-    await openSource(id);
-    await createProposal(id);
+  // 저장(또는 가져오기) 뒤 열기·분석까지 busy 하나로 묶는다(중간에 다시 눌러 중복 저장·AI 호출이 생기지 않게).
+  async function analyzeSaved(save: () => Promise<string | null>) {
+    let saved = '';
+    setAnalyzing(true);
+    try {
+      await run(async () => {
+        const id = await save();
+        if (!id) return;
+        saved = id;
+        await followSaved(id, { refresh, open: fetchSource, analyze: makeProposal });
+      }, MADE);
+    } finally {
+      setAnalyzing(false);
+    }
+    return saved;
   }
 
   async function apply() {
@@ -606,58 +706,44 @@ export function ChangeReview({
               </div>
             ) : (
               <>
-                <div className="ai-tabs" role="tablist" aria-label="원문 넣는 방법">
-                  {(
-                    [
-                      ['paste', '붙여넣기'],
-                      ['github', 'GitHub 이슈'],
-                    ] as const
-                  ).map(([id, label]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      role="tab"
-                      aria-selected={(revising ? 'paste' : inputTab) === id}
-                      disabled={!!revising && id !== 'paste'}
-                      onClick={() => setInputTab(id)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                  {revising && (
-                    <button type="button" className="text-link ai-tab-cancel" onClick={() => setRevising(null)}>
-                      수정본 취소
-                    </button>
-                  )}
-                </div>
-                {inputTab === 'github' && !revising ? (
-                  <div className="ai-tab-panel" role="tabpanel">
-                    <GithubIssues projectId={projectId} writable={writable} onImported={openAndAnalyze} />
-                  </div>
-                ) : (
-                  <div className="ai-tab-panel" role="tabpanel">
+                <InputTabs
+                  tab={revising ? 'paste' : inputTab}
+                  onTab={setInputTab}
+                  locked={!!revising}
+                  extra={
+                    revising && (
+                      <button type="button" className="text-link ai-tab-cancel" onClick={() => setRevising(null)}>
+                        수정본 취소
+                      </button>
+                    )
+                  }
+                  github={
+                    <GithubIssues
+                      projectId={projectId}
+                      writable={writable}
+                      onImported={async (id) => {
+                        await analyzeSaved(async () => id);
+                      }}
+                    />
+                  }
+                  paste={
                     <SourcePaste
                       busy={busy}
                       disabled={!writable}
                       supersedes={revising}
                       submitLabel={analyzing ? '만드는 중…' : 'AI 변경안 만들기'}
-                      onSubmit={async (input) => {
-                        let saved = '';
-                        await run(async () => {
-                          const data = (await call('/api/sources', {
-                            projectId,
-                            ...input,
-                            supersedes: input.supersedes,
-                          })) as { sourceId: string };
-                          saved = data.sourceId;
-                        });
-                        if (!saved) return false;
-                        await openAndAnalyze(saved);
-                        return true;
-                      }}
+                      onSubmit={async (input) =>
+                        // 저장만 됐어도 true(입력을 비운다). 분석 실패는 원문을 연 채로 알리고 거기서 다시 시도한다.
+                        !!(await analyzeSaved(async () => {
+                          const data = (await call('/api/sources', { projectId, ...input, supersedes: input.supersedes })) as {
+                            sourceId: string;
+                          };
+                          return data.sourceId;
+                        }))
+                      }
                     />
-                  </div>
-                )}
+                  }
+                />
               </>
             )}
           </div>
