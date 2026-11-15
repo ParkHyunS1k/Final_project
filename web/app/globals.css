@@ -3461,3 +3461,34 @@ textarea {
     justify-self: start;
   }
 }
+/* 홈에서 관심을 보낸 사람(프로젝트 탭 팀원 구역, 2026-11-15 중복 정리) */
+.team-interests {
+  margin-top: 20px;
+}
+.team-interests h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.team-interests ul {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.team-interests li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+.team-interests li + li {
+  border-top: 1px solid var(--border);
+}
+.team-interests .btn {
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 13px;
+}

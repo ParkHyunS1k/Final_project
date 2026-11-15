@@ -14,7 +14,7 @@ import {
   LogOut,
   FileText,
 } from 'lucide-react';
-import { TeamDirectory } from './team-directory';
+import { InterestList, TeamDirectory } from './team-directory';
 import { PageHeader } from './page-header';
 import { ProjectCreate } from './project-create';
 import { CareerWorkspace } from './career-workspace';
@@ -153,8 +153,6 @@ export function UnifiedApp({
   const [tab, setTab] = useState<Tab>(tabFrom(initialTab));
   const [selectedProject, setSelectedProject] = useState(projectId);
   // 홈에서 프로젝트 화면이 스스로 고른 프로젝트. 주소에 project가 있으면 그쪽이 우선이다.
-  const [homeProject, setHomeProject] = useState('');
-  const shownProject = selectedProject || homeProject;
   const [data, setData] = useState<Hub | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -1131,85 +1129,29 @@ export function UnifiedApp({
             <>
               <ProjectDashboard
                 key={selectedProject}
-                onProject={setHomeProject}
-              />
-              {data?.settings.some(
-                (s) => s.project_id === shownProject && s.mode === 'team',
-              ) && (
-                <section className="hub-card">
-                  <h2>홈에서 팀 모집하기</h2>
-                  {data.settings
-                    .filter((s) => s.project_id === shownProject)
-                    .map((s) => (
-                      <label className="hub-check-label" key={s.project_id}>
-                        <input
-                          type="checkbox"
-                          checked={s.listed}
-                          disabled={busy}
-                          onChange={(e) => {
-                            const listed = e.target.checked;
-                            void act(async () => {
-                              await request({
-                                action: 'listing',
-                                projectId: s.project_id,
-                                listed,
-                                revision: data.projects.find(
-                                  (p) => p.id === s.project_id,
-                                )?.revision,
-                              });
-                              await refresh();
-                            });
-                          }}
-                        />
-                        프로젝트 이름·템플릿·인원·진행 기간 공개
-                      </label>
-                    ))}
-                  <p>
-                    참여 관심{' '}
-                    {
-                      data.interests.filter(
-                        (i) => i.project_id === shownProject,
-                      ).length
+                teamExtra={(projectId) => (
+                  // 공개 설정은 프로젝트 탭의 '팀 찾기와 홈 공개 모집에 공개' 하나뿐이다(2026-11-15 중복 정리).
+                  <InterestList
+                    busy={busy}
+                    interests={(data?.interests ?? []).filter((i) => i.project_id === projectId)}
+                    onInvite={(userId) =>
+                      void act(async () => {
+                        const latest = await request<Hub>();
+                        await request({
+                          action: 'inviteInterested',
+                          projectId,
+                          userId,
+                          revision: latest.projects.find((p) => p.id === projectId)?.revision,
+                        });
+                        await refresh();
+                        setNotice(
+                          '홈에서 확인할 수 있는 초대를 전달했습니다. 팀 합류는 상대방의 목표 확인 후 확정됩니다.',
+                        );
+                      })
                     }
-                    명 · 초대를 보내면 상대방 홈에 초대가 도착해요. 이메일
-                    발송은 서버 설정에 따릅니다.
-                  </p>
-                  {data.interests
-                    .filter((i) => i.project_id === shownProject)
-                    .map((i, n) => (
-                      <div className="hub-project-row" key={n}>
-                        <p>
-                          {i.display_name} · 관심 전달{' '}
-                          {new Date(i.created_at).toLocaleDateString('ko-KR')}
-                          <small className="hub-note">{i.email}</small>
-                        </p>
-                        <button
-                          className="btn"
-                          disabled={busy || !i.email}
-                          onClick={() =>
-                            void act(async () => {
-                              const latest = await request<Hub>();
-                              await request({
-                                action: 'inviteInterested',
-                                projectId: i.project_id,
-                                userId: i.user_id,
-                                revision: latest.projects.find(
-                                  (p) => p.id === i.project_id,
-                                )?.revision,
-                              });
-                              await refresh();
-                              setNotice(
-                                '홈에서 확인할 수 있는 초대를 전달했습니다. 팀 합류는 상대방의 목표 확인 후 확정됩니다.',
-                              );
-                            })
-                          }
-                        >
-                          {i.invited ? '초대 상태 확인·재발급' : '초대 보내기'}
-                        </button>
-                      </div>
-                    ))}
-                </section>
-              )}
+                  />
+                )}
+              />
             </>
           )}
           {(tab === 'profile' || tab === 'team' || tab === 'experience') && (

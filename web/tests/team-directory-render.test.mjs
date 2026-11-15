@@ -21,7 +21,7 @@ await build({
   packages: 'external',
   alias: { '@': process.cwd() },
 });
-const { MyRequests, TeamDirectory, TeamListing } = await import(pathToFileURL(outfile).href);
+const { MyRequests, TeamDirectory, TeamListing, InterestList } = await import(pathToFileURL(outfile).href);
 const at = '2026-10-15T03:50:00.000Z';
 
 void test('공개 카드가 없어도 대기 중인 내 신청에는 취소 버튼이 있고, 처리된 신청에는 없다', () => {
@@ -73,4 +73,36 @@ void test('팀장 화면: 금지 중인 신청자는 승인 버튼이 꺼지고 
   assert.match(rows[0], /<button[^>]*disabled=""[^>]*>승인/);
   assert.doesNotMatch(rows[1], /참여할 수 없어요/);
   assert.doesNotMatch(rows[1], /<button[^>]*disabled=""[^>]*>승인/);
+});
+
+// 2026-11-15 중복 정리: 공개 설정은 프로젝트 탭 한 곳. 같은 설정이 팀 찾기와 홈 공개 모집에 함께 쓰인다.
+void test('팀 공개 설정 문구는 팀 찾기와 홈 공개 모집 둘 다에 보인다는 걸 알린다', () => {
+  const html = renderToString(
+    createElement(TeamListing, {
+      writable: true,
+      refresh: async () => {},
+      state: { projectId: 'p_1', me: { role: 'owner' }, sprint: { revision: 1 }, listed: false, policy: { goalVersion: 1 } },
+    }),
+  );
+  assert.match(html, /팀 찾기와 홈 공개 모집에 공개/);
+});
+
+void test('홈에서 관심을 보낸 사람: 이름·초대 버튼, 이미 초대했으면 재발급, 이메일이 없으면 버튼이 꺼진다. 없으면 아무것도 안 보인다', () => {
+  const html = renderToString(
+    createElement(InterestList, {
+      busy: false,
+      onInvite: () => {},
+      interests: [
+        { user_id: 'u1', display_name: '지호', email: 'a@x.dev', created_at: at, invited: false },
+        { user_id: 'u2', display_name: '하린', email: 'b@x.dev', created_at: at, invited: true },
+        { user_id: 'u3', display_name: '도윤', email: null, created_at: at, invited: false },
+      ],
+    }),
+  );
+  assert.match(html, /홈에서 관심을 보낸 사람 (<!-- -->)?3(<!-- -->)?명/);
+  const rows = html.split('<li').slice(1);
+  assert.match(rows[0], /지호[\s\S]*>초대 보내기<\/button>/);
+  assert.match(rows[1], /초대 상태 확인·재발급/);
+  assert.match(rows[2], /<button[^>]*disabled=""[^>]*>초대 보내기/);
+  assert.equal(renderToString(createElement(InterestList, { busy: false, onInvite: () => {}, interests: [] })), '');
 });
