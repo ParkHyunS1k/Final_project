@@ -2460,71 +2460,267 @@ textarea {
   }
 }
 
-/* 팀 찾기(공개 팀 목록). 카드 껍데기(.project-panel)를 없앴으므로 문단·'내 신청' 간격은 여기서 준다. */
-.team-directory > p,
+/* 팀 찾기(2026-11-16 재구성): 내 신청 띠 → 필터 → 카드 격자, 신청은 패널(dialog). */
 .team-directory > output {
+  display: block;
   margin: 12px 0;
 }
-.team-directory > h2 {
-  margin: 28px 0 12px;
+.team-mine {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+  padding: 4px 16px;
+  margin: 0 0 16px;
 }
-.team-directory .team-requests {
-  list-style: disc;
-  padding-left: 24px;
-  margin: 12px 0;
-}
-.team-directory .team-requests li {
-  margin: 8px 0;
-}
-.team-directory .team-list {
+.team-mine ul {
   list-style: none;
   padding: 0;
+  margin: 0;
+}
+.team-mine li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.team-mine > ul > li:first-child {
+  border-top: none;
+}
+.team-mine small {
+  color: var(--muted-foreground);
+}
+.team-mine li > .text-link,
+.team-mine li > .btn {
+  margin-left: auto;
+}
+.team-mine details {
+  padding: 10px 0;
+}
+.team-mine > ul + details {
+  border-top: 1px solid var(--border);
+}
+.team-mine summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.team-mine details li {
+  color: var(--muted-foreground);
+}
+.team-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+.team-chip {
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: var(--background);
+  color: var(--muted-foreground);
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.team-chip i {
+  font-style: normal;
+  opacity: 0.7;
+  margin-left: 2px;
+}
+.team-chip.on {
+  background: var(--foreground);
+  border-color: var(--foreground);
+  color: var(--background);
+  font-weight: 600;
+}
+.team-seats-only {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+}
+.team-grid {
+  list-style: none;
+  padding: 0;
+  margin: 0;
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
-.team-directory .team-entry {
-  margin: 0;
-  padding: 16px 20px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--gray-25);
-}
-.team-entry-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.team-directory .team-entry-head h2 {
-  font-size: 18px;
-  margin: 0 8px 0 0;
-}
-.team-entry-facts {
+.team-card {
   display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 6px 16px;
-  margin: 8px 0 12px;
-  font-size: 14px;
+  align-content: start;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+  padding: 16px 18px;
+  min-width: 0;
 }
-.team-entry-facts dt {
-  color: var(--gray-500);
+.team-card.is-closed {
+  opacity: 0.55;
 }
-.team-entry-facts dd {
+/* .hub-main h2·h3(app.css)보다 앞서도록 한 단계 더 좁힌다. */
+.team-directory .team-card h2,
+.team-directory .team-panel h2 {
   margin: 0;
-  color: var(--gray-700);
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
 }
-.team-entry-actions {
+.team-goal {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.team-card-top {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+.team-seats {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.team-seats .seat {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--gray-300);
+}
+.team-seats .seat.on {
+  background: var(--gray-600);
+  border-color: var(--gray-600);
+}
+.team-seats em {
+  font-style: normal;
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.team-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.team-tags span {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  background: var(--gray-50);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 7px;
+}
+.team-time {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.team-time b {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+}
+.team-time.urgent b {
+  color: var(--heat-700);
+}
+/* 신청 패널: 데스크톱은 오른쪽, 좁은 화면은 아래 시트. */
+.team-panel {
+  margin: 0 0 0 auto;
+  width: min(400px, 100vw);
+  height: 100dvh;
+  max-height: 100dvh;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: var(--background);
+  color: var(--foreground);
+  padding: 0;
+}
+.team-panel::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+.team-panel form {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 22px 22px 28px;
+}
+.team-panel section {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.team-directory .team-panel h3 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+.team-panel section p {
+  margin: 0;
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.team-panel .team-time {
+  border-top: none;
+  padding-top: 0;
+}
+.team-panel-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--heat-50);
+  color: var(--heat-700);
+  font-size: 13px;
+}
+.team-panel-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  border: none;
+  background: none;
+  color: var(--muted-foreground);
+  padding: 6px;
+  cursor: pointer;
+}
+.team-panel .team-card-top {
+  padding-right: 36px;
 }
 .team-listing {
   margin-top: 16px;
 }
 @media (max-width: 640px) {
-  .team-entry-facts {
+  .team-grid {
     grid-template-columns: 1fr;
+  }
+  .team-panel {
+    margin: auto 0 0;
+    width: 100vw;
+    max-width: 100vw;
+    height: auto;
+    max-height: 88dvh;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    border-radius: 18px 18px 0 0;
   }
 }
 

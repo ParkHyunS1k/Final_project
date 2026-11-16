@@ -1,9 +1,13 @@
 'use client';
 // 공개 팀 목록(사이드바 '팀 찾기')과 팀장의 공개·참여 신청 관리. 규칙: docs/superpowers/specs/2026-10-15-team-list-join-design.md
 // 참여 가능 여부·인원·목표 버전은 서버가 판단한다. 화면은 받은 값을 보여주고 결과를 다시 불러온다.
-import { useEffect, useState } from 'react';
+// 2026-11-16 재구성: 내 신청을 위로, 팀은 카드 격자로 훑고, 목표 확인과 신청은 패널에서. 템플릿 팀도 같은 '참여 신청'(B안).
+import { useEffect, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import { apiFetch } from '@/lib/supabase-browser';
 import { restrictionMessage, type RestrictionView } from '@/lib/score';
+import { skillName } from '@/lib/career/catalog';
+import { sprintDay } from '@/lib/race';
 import { PageHeader } from './page-header';
 
 export type Team = {
@@ -12,6 +16,8 @@ export type Team = {
   goal: string;
   scope: string;
   completionCriteria: string;
+  /** 템플릿 업무의 기술(4개까지). 직접 만든 팀은 빈 목록. */
+  skills: string[];
   lifecycle: 'draft' | 'active';
   goalVersion: number;
   members: number;
@@ -30,7 +36,7 @@ export type JoinRequest = {
   createdAt: string;
 };
 const STATUS: Record<JoinRequest['status'], string> = {
-  pending: '팀장 확인 대기',
+  pending: '확인 대기',
   approved: '승인됨',
   rejected: '거절됨',
   cancelled: '취소함',
@@ -44,6 +50,216 @@ const kst = (at: string) =>
     hour: '2-digit',
     minute: '2-digit',
   });
+/** 진행 중 팀의 신청이 이보다 적게 남으면 강조한다. */
+const URGENT_MS = 3 * 3_600_000;
+const DAY_MS = 86_400_000;
+
+export type TeamFilter = 'all' | 'draft' | 'active';
+/** 상태·자리 필터. 신청할 수 없는 팀(꽉 참·이미 신청함 등)은 맨 뒤로 보낸다. */
+export function visibleTeams(teams: Team[], filter: TeamFilter, seatsOnly: boolean) {
+  const shown = teams.filter(
+    (t) => (filter === 'all' || t.lifecycle === filter) && (!seatsOnly || t.members < t.maxMembers),
+  );
+  return [...shown.filter((t) => t.joinable), ...shown.filter((t) => !t.joinable)];
+}
+
+/** 홈 '함께 달리고 있는 팀' 카드의 버튼. 신청은 팀 찾기 패널 한 곳에서 한다. */
+export function homeTeamAction(t: { joined: boolean; join_open: boolean; members: number }) {
+  if (t.joined) return 'open';
+  if (!t.join_open) return 'closed';
+  return t.members >= 4 ? 'full' : 'apply';
+}
+
+/** 확인 체크는 그 팀·그 목표 버전에만 유효하다(다른 팀이나 바뀐 목표로 이어지지 않게). */
+export function agreementFor(team: Pick<Team, 'projectId' | 'goalVersion'>) {
+  return `${team.projectId}:v${team.goalVersion}`;
+}
+
+function leftText(ms: number) {
+  const minutes = Math.max(0, Math.floor(ms / 60_000));
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h ? `${h}시간${m ? ` ${m}분` : ''}` : `${m}분`;
+}
+
+function TeamState({ team, now }: { team: Team; now: number }) {
+  const days =
+    team.startedAt && team.deadlineAt
+      ? Math.round((Date.parse(team.deadlineAt) - Date.parse(team.startedAt)) / DAY_MS)
+      : 7;
+  return team.lifecycle === 'active' && team.startedAt ? (
+    <span className="pill orange">{`진행 중 · DAY ${sprintDay(team.startedAt, now, days)}`}</span>
+  ) : (
+    <span className="pill">준비 중</span>
+  );
+}
+
+function Seats({ team }: { team: Team }) {
+  return (
+    <span className="team-seats" aria-label={`인원 ${team.members}/${team.maxMembers}명`}>
+      {Array.from({ length: team.maxMembers }, (_, i) => (
+        <i key={i} className={i < team.members ? 'seat on' : 'seat'} aria-hidden="true" />
+      ))}
+      <em>{`${team.members}/${team.maxMembers}`}</em>
+    </span>
+  );
+}
+
+function TeamTime({ team, now }: { team: Team; now: number }) {
+  if (!team.deadlineAt || !team.joinUntil)
+    return (
+      <div className="team-time">
+        <span>시작 전</span>
+        <b>시작하면 7일</b>
+      </div>
+    );
+  const left = Date.parse(team.joinUntil) - now;
+  return (
+    <div className={left < URGENT_MS ? 'team-time urgent' : 'team-time'}>
+      <span>{`${kst(team.deadlineAt)} 마감`}</span>
+      <b>{team.members >= team.maxMembers ? '자리 없음' : `신청 마감 ${leftText(left)}`}</b>
+    </div>
+  );
+}
+
+function Skills({ skills }: { skills: string[] }) {
+  return (
+    <div className="team-tags">
+      {skills.length ? skills.map((s) => <span key={s}>{skillName(s)}</span>) : <span>직접 만든 팀</span>}
+    </div>
+  );
+}
+
+const closedLabel = (t: Team) =>
+  t.requested ? '신청함 · 확인 대기' : t.members >= t.maxMembers ? '인원 마감' : '신청 불가';
+
+/** 훑어보기용 카드. 기능 범위·완료 기준 전문은 패널에서 읽는다. */
+export function TeamCard({
+  team,
+  now,
+  busy,
+  restricted,
+  onOpen,
+}: {
+  team: Team;
+  now: number;
+  busy: boolean;
+  restricted: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <li className={team.joinable ? 'team-card' : 'team-card is-closed'}>
+      <div className="team-card-top">
+        <TeamState team={team} now={now} />
+        <Seats team={team} />
+      </div>
+      <h2>{team.title}</h2>
+      <p className="team-goal">{team.goal}</p>
+      <Skills skills={team.skills} />
+      <TeamTime team={team} now={now} />
+      <button className="btn wide" disabled={!team.joinable || busy || restricted} onClick={onOpen}>
+        {team.joinable ? '자세히 보고 신청' : closedLabel(team)}
+      </button>
+    </li>
+  );
+}
+
+/** 목표 확인과 참여 신청. 데스크톱은 오른쪽 패널, 좁은 화면은 아래 시트(CSS). Esc·닫기 버튼으로 닫는다. */
+export function TeamPanel({
+  team,
+  now,
+  agreed,
+  busy,
+  restricted,
+  error = '',
+  onAgree,
+  onSubmit,
+  onClose,
+}: {
+  team: Team;
+  now: number;
+  agreed: boolean;
+  busy: boolean;
+  restricted: boolean;
+  /** 신청 실패 이유. 모달이 열린 동안 바깥은 읽히지 않으므로 패널 안에서 알린다. */
+  error?: string;
+  onAgree: (agreed: boolean) => void;
+  onSubmit: () => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = ref.current;
+    if (dialog && !dialog.open) dialog.showModal();
+  }, []);
+  return (
+    <dialog
+      ref={ref}
+      className="team-panel"
+      aria-labelledby="team-panel-title"
+      onClose={onClose}
+    >
+      <form
+        method="dialog"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSubmit();
+        }}
+      >
+        {/* close()를 거쳐야 여는 버튼으로 초점이 돌아간다. 부모 정리는 onClose가 한다. */}
+        <button type="button" className="team-panel-close" aria-label="닫기" onClick={() => ref.current?.close()}>
+          <X size={18} aria-hidden="true" />
+        </button>
+        <div className="team-card-top">
+          <TeamState team={team} now={now} />
+          <Seats team={team} />
+        </div>
+        <h2 id="team-panel-title">{team.title}</h2>
+        <TeamTime team={team} now={now} />
+        <section>
+          <h3>{`목표 v${team.goalVersion}`}</h3>
+          <p>{team.goal}</p>
+        </section>
+        <section>
+          <h3>기능 범위</h3>
+          <p>{team.scope}</p>
+        </section>
+        <section>
+          <h3>완료 기준</h3>
+          {/* 템플릿 팀은 따로 적은 완료 기준 없이 업무 완료·근거로 끝낸다(completion_mode=tasks). */}
+          <p>{team.completionCriteria || '모든 업무를 완료하고 근거를 남기면 팀장이 완료를 기록해요.'}</p>
+        </section>
+        {team.skills.length > 0 && (
+          <section>
+            <h3>필요한 기술</h3>
+            <Skills skills={team.skills} />
+          </section>
+        )}
+        <label className="agreement">
+          <input type="checkbox" checked={agreed} onChange={(e) => onAgree(e.target.checked)} />
+          {`목표 v${team.goalVersion}·기능 범위·완료 기준을 확인했고, 이 목표로 참여를 신청합니다.`}
+        </label>
+        {error && (
+          <p className="team-panel-error" role="alert">
+            {error}
+          </p>
+        )}
+        <button className="btn primary wide" disabled={!agreed || busy || restricted}>
+          참여 신청 보내기
+        </button>
+        <p className="tiny muted">
+          팀장이 승인하면 이 프로젝트가 홈에 나타나요. 팀장에게는 이름과 로그인 이메일이 전달돼요. 대기 신청은 5개까지예요.
+        </p>
+      </form>
+    </dialog>
+  );
+}
+
+const FILTERS: { id: TeamFilter; label: string }[] = [
+  { id: 'all', label: '전체' },
+  { id: 'draft', label: '준비 중' },
+  { id: 'active', label: '진행 중' },
+];
 
 function withTeam(list: Team[] | null, fresh: Team) {
   return list?.map((t) => (t.projectId === fresh.projectId ? { ...t, ...fresh } : t)) ?? null;
@@ -67,18 +283,33 @@ async function call<T>(path: string, body?: Record<string, unknown>) {
   return data;
 }
 
-export function TeamDirectory({ restriction = null }: { restriction?: RestrictionView | null } = {}) {
+
+export function TeamDirectory({
+  restriction = null,
+  initialTeam = '',
+}: {
+  restriction?: RestrictionView | null;
+  /** 홈 카드에서 고른 팀. 목록에 있으면 그 팀 패널을 바로 연다. */
+  initialTeam?: string;
+} = {}) {
   const [teams, setTeams] = useState<Team[] | null>(null);
   const [requests, setRequests] = useState<JoinRequest[]>([]);
   const [open, setOpen] = useState('');
-  const [agreed, setAgreed] = useState(false);
+  // 확인한 팀·목표 버전(agreementFor). 팀을 바꾸거나 목표가 바뀌면 저절로 풀린다.
+  const [agreedTo, setAgreedTo] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [filter, setFilter] = useState<TeamFilter>('all');
+  const [seatsOnly, setSeatsOnly] = useState(false);
+  // 남은 신청 시간 표시용. 목록을 받을 때 다시 잰다(서버 판단과 별개인 안내).
+  const [now, setNow] = useState(0);
   // 처음 열 때와 신청·취소 뒤에 서버 목록을 다시 받는다.
   function load() {
     return call<{ teams: Team[]; requests: JoinRequest[] }>('/api/teams').then((data) => {
       setTeams(data.teams);
       setRequests(data.requests);
+      setNow(Date.now());
+      return data;
     });
   }
   useEffect(() => {
@@ -86,155 +317,130 @@ export function TeamDirectory({ restriction = null }: { restriction?: Restrictio
       .then((data) => {
         setTeams(data.teams);
         setRequests(data.requests);
+        setNow(Date.now());
+        if (!initialTeam) return;
+        const chosen = data.teams.find((t) => t.projectId === initialTeam);
+        if (chosen?.joinable) setOpen(chosen.projectId);
+        else if (chosen?.requested) setMessage('이미 참여를 신청한 팀이에요. 위 내 신청에서 상태를 볼 수 있어요.');
+        else setMessage('이 팀은 지금 참여 신청을 받지 않아요.');
       })
       .catch((e: Error) => setMessage(e.message));
-  }, []);
+  }, [initialTeam]);
   async function run(work: () => Promise<unknown>, done: string) {
     setBusy(true);
     setMessage('');
     try {
       await work();
       setOpen('');
-      setAgreed(false);
+      setAgreedTo('');
       // 목록을 다시 받은 뒤에 결과를 알린다. 안내와 화면 상태가 어긋나지 않게.
       await load();
       setMessage(done);
     } catch (e) {
       const changed = (e as { details?: Team }).details;
-      // 저장 시점에 목표가 바뀌었으면 최신 목표로 다시 확인받는다.
-      if (changed) {
-        setTeams(withTeam(teams, changed));
-        setAgreed(false);
-      }
+      // 저장 시점에 목표가 바뀌었으면 최신 목표로 다시 확인받는다(패널은 열어 둔다, 버전이 바뀌어 체크가 풀린다).
+      if (changed) setTeams(withTeam(teams, changed));
       setMessage((e as Error).message);
       await load().catch(() => undefined);
     } finally {
       setBusy(false);
     }
   }
-  const pending = (projectId: string) =>
-    requests.find((r) => r.projectId === projectId && r.status === 'pending');
+  const cancel = (r: { requestId: string }) =>
+    void run(() => call('/api/teams', { action: 'cancel', requestId: r.requestId }), '신청을 취소했습니다.');
+  const chosen = teams?.find((t) => t.projectId === open);
+  const count = (f: TeamFilter) => (teams ?? []).filter((t) => f === 'all' || t.lifecycle === f).length;
+  const shown = visibleTeams(teams ?? [], filter, seatsOnly);
   return (
     <section className="team-directory">
       <PageHeader
         title="팀 찾기"
-        description="팀장이 공개한 팀 중 지금 합류할 수 있는 팀이에요. 준비 중이거나 시작 후 24시간이 지나지 않은 팀이 보이고, 참여 신청을 팀장이 승인하면 팀원이 돼요."
+        description="공개된 팀에 참여를 신청하면 팀장이 승인해요. 진행 중인 팀은 시작 후 24시간까지만 받아요."
       />
       {restriction && (
-        <output className="hint restriction-hint">
-          {restrictionMessage(restriction, '참여 신청할')}
-        </output>
+        <output className="hint restriction-hint">{restrictionMessage(restriction, '참여 신청할')}</output>
       )}
       {message && <output className="hint">{message}</output>}
+      <MyRequests requests={requests} busy={busy} onCancel={cancel} />
       {teams === null ? (
         <p className="tiny muted">팀 목록을 불러오는 중입니다.</p>
       ) : !teams.length ? (
         <p className="muted">지금 합류할 수 있는 공개 팀이 없습니다.</p>
       ) : (
-        <ul className="team-list">
-          {teams.map((t) => {
-            const mine = pending(t.projectId);
-            return (
-              <li key={t.projectId} className="team-entry">
-                <div className="team-entry-head">
-                  <h2>{t.title}</h2>
-                  <span className={'pill' + (t.lifecycle === 'active' ? ' orange' : '')}>
-                    {t.lifecycle === 'active' ? '진행 중' : '준비 중'}
-                  </span>
-                  <span className="pill">
-                    {t.members}/{t.maxMembers}명
-                  </span>
-                </div>
-                <p>{t.goal}</p>
-                <dl className="team-entry-facts">
-                  <dt>기능 범위</dt>
-                  <dd>{t.scope}</dd>
-                  <dt>완료 기준</dt>
-                  <dd>{t.completionCriteria}</dd>
-                  <dt>기한</dt>
-                  <dd>
-                    {t.deadlineAt
-                      ? `${kst(t.deadlineAt)} 마감 · 신청은 ${t.joinUntil ? kst(t.joinUntil) : ''}까지`
-                      : '시작하면 그 시각부터 7일'}
-                  </dd>
-                </dl>
-                {mine ? (
-                  <div className="team-entry-actions">
-                    <span className="pill green">신청함 · 팀장 확인 대기</span>
-                    <button
-                      className="btn"
-                      disabled={busy}
-                      onClick={() =>
-                        void run(
-                          () => call('/api/teams', { action: 'cancel', requestId: mine.requestId }),
-                          '신청을 취소했습니다.',
-                        )
-                      }
-                    >
-                      신청 취소
-                    </button>
-                  </div>
-                ) : open === t.projectId ? (
-                  <form
-                    className="team-entry-actions"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void run(
-                        () =>
-                          call('/api/teams', {
-                            action: 'request',
-                            projectId: t.projectId,
-                            // 이 화면에서 실제로 확인한 목표 버전을 보낸다.
-                            goalVersion: t.goalVersion,
-                            agreed,
-                          }),
-                        `${t.title}에 참여를 신청했습니다. 팀장이 승인하면 내 프로젝트에 나타납니다.`,
-                      );
-                    }}
-                  >
-                    <label className="agreement">
-                      <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
-                      목표 v{t.goalVersion}·기능 범위·완료 기준을 확인하고 참여를 신청합니다.
-                    </label>
-                    <button className="btn primary" disabled={!agreed || busy}>
-                      신청 보내기
-                    </button>
-                    <button type="button" className="btn" disabled={busy} onClick={() => setOpen('')}>
-                      닫기
-                    </button>
-                  </form>
-                ) : (
-                  <div className="team-entry-actions">
-                    <button
-                      className="btn primary"
-                      disabled={!t.joinable || busy || Boolean(restriction)}
-                      onClick={() => {
-                        setOpen(t.projectId);
-                        setAgreed(false);
-                      }}
-                    >
-                      {t.joinable ? '참여 신청' : t.members >= t.maxMembers ? '인원 마감' : '신청 불가'}
-                    </button>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          <div className="team-filters">
+            {FILTERS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                className={filter === f.id ? 'team-chip on' : 'team-chip'}
+                aria-pressed={filter === f.id}
+                onClick={() => setFilter(f.id)}
+              >
+                {f.label} <i>{count(f.id)}</i>
+              </button>
+            ))}
+            <label className="team-seats-only">
+              <input type="checkbox" checked={seatsOnly} onChange={(e) => setSeatsOnly(e.target.checked)} />
+              자리 있는 팀만
+            </label>
+          </div>
+          {shown.length ? (
+            <ul className="team-grid">
+              {shown.map((t) => (
+                <TeamCard
+                  key={t.projectId}
+                  team={t}
+                  now={now}
+                  busy={busy}
+                  restricted={Boolean(restriction)}
+                  onOpen={() => {
+                    setMessage('');
+                    setOpen(t.projectId);
+                  }}
+                />
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">조건에 맞는 팀이 없어요.</p>
+          )}
+        </>
       )}
-      <MyRequests
-        requests={requests}
-        busy={busy}
-        onCancel={(r) =>
-          void run(() => call('/api/teams', { action: 'cancel', requestId: r.requestId }), '신청을 취소했습니다.')
-        }
-      />
+      {chosen && (
+        <TeamPanel
+          key={chosen.projectId}
+          team={chosen}
+          now={now}
+          agreed={agreedTo === agreementFor(chosen)}
+          busy={busy}
+          restricted={Boolean(restriction)}
+          error={message}
+          onAgree={(yes) => setAgreedTo(yes ? agreementFor(chosen) : '')}
+          onClose={() => {
+            setOpen('');
+            setMessage('');
+          }}
+          onSubmit={() =>
+            void run(
+              () =>
+                call('/api/teams', {
+                  action: 'request',
+                  projectId: chosen.projectId,
+                  // 이 화면에서 실제로 확인한 목표 버전을 보낸다.
+                  goalVersion: chosen.goalVersion,
+                  agreed: agreedTo === agreementFor(chosen),
+                }),
+              `${chosen.title}에 참여를 신청했습니다. 팀장이 승인하면 홈에 나타납니다.`,
+            )
+          }
+        />
+      )}
     </section>
   );
 }
 
-// 내 신청 목록. 팀이 비공개로 바뀌어 카드가 사라져도 대기 신청은 여기서 취소할 수 있어야 한다
-// (대기 신청은 사용자당 한도를 차지한다).
+// 내 신청. 대기·승인은 맨 위 띠에, 거절·취소·마감은 '지난 신청'으로 접는다.
+// 팀이 비공개로 바뀌어 카드가 사라져도 대기 신청은 여기서 취소할 수 있어야 한다(대기 신청은 사용자당 한도를 차지한다).
 export function MyRequests({
   requests,
   busy,
@@ -245,30 +451,45 @@ export function MyRequests({
   onCancel: (r: JoinRequest) => void;
 }) {
   if (!requests.length) return null;
+  const live = requests.filter((r) => r.status === 'pending' || r.status === 'approved');
+  const past = requests.filter((r) => !live.includes(r));
   return (
-    <>
-      <h2>내 신청</h2>
-      <ul className="team-requests">
-        {requests.map((r) => (
-          <li key={r.requestId}>
-            {r.status === 'approved' ? (
-              <a href={'/workspace?project=' + encodeURIComponent(r.projectId)}>{r.title}</a>
-            ) : (
-              r.title
-            )}{' '}
-            · {STATUS[r.status]} · {kst(r.createdAt)} 신청
-            {r.status === 'pending' && (
-              <>
-                {' '}
-                <button className="btn" disabled={busy} onClick={() => onCancel(r)}>
+    <section className="team-mine" aria-label="내 신청">
+      {live.length > 0 && (
+        <ul>
+          {live.map((r) => (
+            <li key={r.requestId}>
+              <span className={r.status === 'approved' ? 'pill green' : 'pill orange'}>{STATUS[r.status]}</span>
+              <b>{r.title}</b>
+              <small>{`${kst(r.createdAt)} 신청`}</small>
+              {r.status === 'pending' ? (
+                <button className="text-link" disabled={busy} onClick={() => onCancel(r)}>
                   신청 취소
                 </button>
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
-    </>
+              ) : (
+                <a className="btn primary" href={'/app?tab=work&project=' + encodeURIComponent(r.projectId)}>
+                  프로젝트 열기
+                </a>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {past.length > 0 && (
+        <details>
+          <summary>{`지난 신청 ${past.length}`}</summary>
+          <ul>
+            {past.map((r) => (
+              <li key={r.requestId}>
+                <span className="pill">{STATUS[r.status]}</span>
+                <b>{r.title}</b>
+                <small>{`${kst(r.createdAt)} 신청`}</small>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
   );
 }
 

@@ -498,6 +498,9 @@
   font-size: 11px;
   color: var(--muted-foreground);
 }
+.hub-more {
+  margin-top: 14px;
+}
 .hub-text-button {
   display: inline-flex;
   gap: 7px;

@@ -14,7 +14,7 @@ import {
   LogOut,
   FileText,
 } from 'lucide-react';
-import { InterestList, TeamDirectory } from './team-directory';
+import { InterestList, TeamDirectory, homeTeamAction } from './team-directory';
 import { PageHeader } from './page-header';
 import { ProjectCreate } from './project-create';
 import { CareerWorkspace } from './career-workspace';
@@ -98,6 +98,35 @@ function Chips({ skills }: { skills: readonly string[] }) {
         <span key={s}>{skillName(s)}</span>
       ))}
     </div>
+  );
+}
+// 홈 공개 모집 카드의 버튼(2026-11-16 B안): 참여는 팀 찾기 패널 한 곳에서 신청한다. 관심 표시 버튼은 홈에서 뺐다.
+function HomeTeamButton({
+  team,
+  onOpen,
+  onApply,
+}: {
+  team: { joined: boolean; join_open: boolean; members: number };
+  onOpen: () => void;
+  onApply: () => void;
+}) {
+  const action = homeTeamAction(team);
+  if (action === 'open')
+    return (
+      <button className="btn wide" onClick={onOpen}>
+        프로젝트 열기
+      </button>
+    );
+  if (action === 'apply')
+    return (
+      <button className="btn wide" onClick={onApply}>
+        자세히 보고 신청
+      </button>
+    );
+  return (
+    <button className="btn wide" disabled>
+      {action === 'full' ? '모집 마감' : '신청 마감 · 진행 중'}
+    </button>
   );
 }
 function ProjectTime({
@@ -494,7 +523,7 @@ export function UnifiedApp({
               </nav>
             </>
           )}
-          {tab === 'teams' && <TeamDirectory />}
+          {tab === 'teams' && <TeamDirectory initialTeam={selectedProject} />}
           {tab === 'create' && (
             <ProjectCreate
               onSubmit={async (body) => {
@@ -604,7 +633,7 @@ export function UnifiedApp({
                         </div>
                       ) : (
                         <div className="hub-grid">
-                          {data.directory.map((team) => (
+                          {data.directory.slice(0, 3).map((team) => (
                             <article className="hub-card" key={team.project_id}>
                               <div className="hub-card-top">
                                 <span className="hub-live">
@@ -629,60 +658,19 @@ export function UnifiedApp({
                                 start={team.started_at}
                                 end={team.deadline_at}
                               />
-                              {team.joined ? (
-                                <button
-                                  className="btn wide"
-                                  onClick={() =>
-                                    navigate('work', team.project_id)
-                                  }
-                                >
-                                  프로젝트 열기
-                                </button>
-                              ) : !team.template ? (
-                                <button
-                                  className="btn wide"
-                                  onClick={() => navigate('teams')}
-                                >
-                                  참여 조건 확인하고 신청
-                                </button>
-                              ) : (
-                                <>
-                                  <button
-                                    className="btn wide"
-                                    disabled={
-                                      busy ||
-                                      team.interested ||
-                                      team.members >= 4
-                                    }
-                                    onClick={() =>
-                                      void act(async () => {
-                                        await request({
-                                          action: 'interest',
-                                          projectId: team.project_id,
-                                          consent: true,
-                                        });
-                                        await refresh();
-                                        setNotice(
-                                          '관심을 전달했습니다. 실제 팀 참여는 팀장의 초대와 목표 동의 후 확정됩니다.',
-                                        );
-                                      })
-                                    }
-                                  >
-                                    {team.interested
-                                      ? '관심 전달됨 · 초대 대기'
-                                      : team.members >= 4
-                                        ? '모집 마감'
-                                        : '연락처 공유하고 참여 요청'}
-                                  </button>
-                                  <small className="hub-note">
-                                    팀장에게 이름과 로그인 이메일을 전달해요.
-                                    이력서는 공개되지 않아요.
-                                  </small>
-                                </>
-                              )}
+                              <HomeTeamButton
+                                team={team}
+                                onOpen={() => navigate('work', team.project_id)}
+                                onApply={() => navigate('teams', team.project_id)}
+                              />
                             </article>
                           ))}
                         </div>
+                      )}
+                      {(data?.directory.length ?? 0) > 3 && (
+                        <button className="hub-text-button hub-more" onClick={() => navigate('teams')}>
+                          팀 찾기에서 모두 보기 <ArrowRight size={14} />
+                        </button>
                       )}
                       <div className="hub-heading">
                         <div>
