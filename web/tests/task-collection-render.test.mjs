@@ -322,6 +322,18 @@ test('개발 현황: fixes #이슈로 붙은 PR은 연결 태그, 해결한 이�
   const pm = renderToString(createElement(PrPanel, { ...props, issues: [], issueStatus: [], pulls: [{ ...fixer, branch: 'pm-1-x', fixes: [] }] }));
   assert.doesNotMatch(pm, /로 연결/);
   assert.match(pm, /머지됐어요/);
+  // 상태를 확인한 열린 이슈만 '아직 열려 있어요'(Codex 리뷰 2026-11-16).
+  const unknown = renderToString(createElement(PrPanel, { ...props, issueStatus: [st(12, { state: 'closed', reason: 'completed' }), st(15, { state: 'missing' })] }));
+  assert.doesNotMatch(unknown, /아직 열려 있어요/);
+  const failed = renderToString(createElement(PrPanel, { ...props, issueStatus: undefined, issueError: '이슈 상태를 읽지 못했어요' }));
+  assert.doesNotMatch(failed, /아직 열려 있어요/);
+  // 완료 제안이 안 보이면(팀원·다른 PR이 열림) 닫힌 이슈 안내를 그대로 둔다.
+  const viewer = renderToString(createElement(PrPanel, { ...props, canEdit: false }));
+  assert.doesNotMatch(viewer, /해결했어요/);
+  assert.match(viewer, /닫힌 이슈가 있어요: #12/);
+  const waiting = renderToString(createElement(PrPanel, { ...props, pulls: [fixer, { ...fixer, number: 35, state: 'open', fixes: [] }] }));
+  assert.doesNotMatch(waiting, /해결했어요/);
+  assert.match(waiting, /닫힌 이슈가 있어요: #12/);
 });
 
 test('보드 카드: 고칠 수 있는 사람에게 연결 PR이 모두 머지된 업무는 완료 제안이 보인다', () => {

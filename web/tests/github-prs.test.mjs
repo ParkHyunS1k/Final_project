@@ -68,6 +68,7 @@ const pr = (number, over = {}) => ({
   html_url: `https://github.com/team/app/pull/${number}`,
   user: { login: 'alice' },
   head: { ref: `pm-1-work` },
+  base: { ref: 'main', repo: { default_branch: 'main' } },
   ...over,
 });
 
@@ -77,12 +78,17 @@ test('PR 본문에서 닫는 키워드 뒤의 #번호만 찾는다(대소문자�
   assert.deepEqual(api.closingIssues('FIXED #7 / close #8 / resolved #9 / closed #1 / resolve #2 / fixes #3'), [7, 8, 9, 1, 2, 3]);
   assert.deepEqual(api.closingIssues('see #12, related #13, prefix #5, fixes other/repo#9, fixes #12abc'), []);
   assert.deepEqual(api.closingIssues(''), []);
+  // 코드로 쓴 예시는 선언이 아니다(Codex 리뷰 2026-11-16).
+  assert.deepEqual(api.closingIssues('예시: `Fixes #12`\n```\nfixes #13\n```\n~~~\ncloses #14\n~~~\nResolves #15'), [15]);
 });
 
 test('PR 본문을 읽어 fixes 번호를 담는다(본문이 없으면 빈 목록)', () => {
   assert.deepEqual(api.toPull(pr(6, { body: '토큰 만료 처리\n\nFixes #12' })).fixes, [12]);
   assert.deepEqual(api.toPull(pr(7, { body: null })).fixes, []);
   assert.deepEqual(api.toPull(pr(8)).fixes, []);
+  // GitHub는 기본 브랜치가 아닌 곳으로 가는 PR의 닫는 키워드를 무시한다(Codex 리뷰 2026-11-16).
+  assert.deepEqual(api.toPull(pr(9, { body: 'Fixes #12', base: { ref: 'release', repo: { default_branch: 'main' } } })).fixes, []);
+  assert.deepEqual(api.toPull(pr(10, { body: 'Fixes #12', base: undefined })).fixes, []);
 });
 
 test('업무 연결: PM-번호와 출처 이슈 fixes 둘 다로 붙이고, 같은 PR은 한 번만', () => {

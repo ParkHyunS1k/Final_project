@@ -256,13 +256,16 @@ export function PrPanel({
   const solved = [...new Set(fixers.flatMap(fixedBy))].sort((a, b) => a - b);
   const isSolved = (n: number) => solved.includes(n);
   // 이슈는 닫혔는데 업무는 남았다(GitHub 쪽에서 먼저 끝났거나 계획이 바뀜). 머지된 PR이 닫은 이슈는 완료 제안이 대신 알린다.
+  // 완료 제안이 실제로 보일 때만 그 안내로 대신한다(팀원·다른 PR이 열림이면 닫힘 안내를 그대로 둔다).
+  const replaced = (n: number) => suggestion === 'complete' && isSolved(n);
   const closedIssues = task.done
     ? []
-    : (issueStatus ?? []).filter((s) => s.state === 'closed' && !isSolved(s.number) && issues.some((l) => sameIssue(s, l)));
+    : (issueStatus ?? []).filter((s) => s.state === 'closed' && !replaced(s.number) && issues.some((l) => sameIssue(s, l)));
+  // 상태를 확인한 열린 이슈만(조회 실패·찾을 수 없음은 단정하지 않는다).
   const openLeft = solved.length
     ? issues
+        .filter((l) => !isSolved(l.number) && (issueStatus ?? []).some((s) => s.state === 'open' && sameIssue(s, l)))
         .map((l) => l.number)
-        .filter((n) => !isSolved(n) && !(issueStatus ?? []).some((s) => s.number === n && s.state === 'closed'))
     : [];
   const lastFixer = fixers.at(-1)?.number ?? 0;
   const loading = (n: number, i: number) => !details[n] && !detailError && i < DETAIL_MAX_PULLS;

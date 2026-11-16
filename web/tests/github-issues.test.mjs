@@ -825,6 +825,7 @@ test('PR 본문의 fixes #이슈로 그 이슈에서 만든 업무에 PR이 붙�
     html_url: `https://github.com/team/app/pull/${number}`,
     user: { login: 'alice' },
     head: { ref: 'hotfix/token', sha: 'a'.repeat(40) },
+    base: { ref: 'main', repo: { default_branch: 'main' } },
   });
   api.useGithub({ fetchImpl: fakeGithub({ pulls: [pull(34, 'Fixes #12'), pull(35, 'fixes #99'), pull(36, 'see #12')] }).fetchImpl });
   const body = await json(await prsGet('fix-owner', projectId), 200);

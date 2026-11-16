@@ -70,10 +70,13 @@ export function taskIdsIn(title: string, branch: string) {
   return ids;
 }
 
-/** PR 본문에서 닫는 키워드 뒤의 이슈 번호(중복 없이, 나온 순서). */
+// 코드 블록·인라인 코드 안의 키워드는 예시라서 이슈를 닫지 않는다.
+const CODE = /^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$|`[^`\n]*`/gm;
+
+/** PR 본문에서 닫는 키워드 뒤의 이슈 번호(중복 없이, 나온 순서). 코드로 쓴 예시는 뺀다. */
 export function closingIssues(body: string) {
   const numbers: number[] = [];
-  for (const m of body.matchAll(CLOSES)) {
+  for (const m of body.replace(CODE, ' ').matchAll(CLOSES)) {
     const n = Number(m[1]);
     if (!numbers.includes(n)) numbers.push(n);
   }
@@ -85,6 +88,10 @@ export function toPull(raw: Record<string, unknown>): Pull | null {
   if (typeof number !== 'number' || !Number.isInteger(number) || number < 1) return null;
   const head = (raw.head ?? {}) as Record<string, unknown>;
   const user = (raw.user ?? {}) as Record<string, unknown>;
+  const base = (raw.base ?? {}) as Record<string, unknown>;
+  const baseRepo = (base.repo ?? {}) as Record<string, unknown>;
+  // GitHub는 기본 브랜치로 가는 PR의 닫는 키워드만 처리한다. 모르면 연결하지 않는다.
+  const toDefault = typeof base.ref === 'string' && base.ref !== '' && base.ref === baseRepo.default_branch;
   const login = typeof user.login === 'string' && LOGIN.test(user.login) ? user.login : '';
   return {
     number,
@@ -95,7 +102,7 @@ export function toPull(raw: Record<string, unknown>): Pull | null {
     url: typeof raw.html_url === 'string' && raw.html_url.startsWith('https://github.com/') ? raw.html_url : '',
     sha: typeof head.sha === 'string' && SHA.test(head.sha) ? head.sha : '',
     updatedAt: typeof raw.updated_at === 'string' && !Number.isNaN(Date.parse(raw.updated_at)) ? raw.updated_at : '',
-    fixes: typeof raw.body === 'string' ? closingIssues(raw.body.slice(0, 65_536)) : [],
+    fixes: toDefault && typeof raw.body === 'string' ? closingIssues(raw.body.slice(0, 65_536)) : [],
   };
 }
 
