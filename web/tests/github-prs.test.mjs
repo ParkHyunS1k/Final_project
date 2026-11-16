@@ -14,7 +14,7 @@ const outfile = join(mkdtempSync(join(tmpdir(), 'projectmate-prs-test-')), 'rout
 await build({
   stdin: {
     contents: [
-      "export { taskRef, branchName, taskIdsIn, toPull, prSuggestion, summarizeChecks, summarizeReviews, stalledHours } from './lib/github-prs';",
+      "export { taskRef, branchName, taskIdsIn, closingIssues, linkPulls, toPull, prSuggestion, summarizeChecks, summarizeReviews, stalledHours } from './lib/github-prs';",
       "export { readSprint, bumpTaskVersion } from './lib/sprint-store';",
       "export { setProjectRepo } from './lib/project-repo';",
       "export { POST as projectsPOST } from './app/api/projects/route';",
@@ -68,7 +68,39 @@ const pr = (number, over = {}) => ({
   html_url: `https://github.com/team/app/pull/${number}`,
   user: { login: 'alice' },
   head: { ref: `pm-1-work` },
+  base: { ref: 'main', repo: { default_branch: 'main' } },
   ...over,
+});
+
+// 2026-11-16 fixes #n: PR 본문의 닫는 키워드(GitHub와 같은 9개)로 이슈에서 만든 업무에 PR을 붙인다.
+test('PR 본문에서 닫는 키워드 뒤의 #번호만 찾는다(대소문자·콜론 허용, 다른 저장소·낱말 일부는 무시)', () => {
+  assert.deepEqual(api.closingIssues('Fixes #12, closes #13 and Resolves: #14\nfix #12'), [12, 13, 14]);
+  assert.deepEqual(api.closingIssues('FIXED #7 / close #8 / resolved #9 / closed #1 / resolve #2 / fixes #3'), [7, 8, 9, 1, 2, 3]);
+  assert.deepEqual(api.closingIssues('see #12, related #13, prefix #5, fixes other/repo#9, fixes #12abc'), []);
+  assert.deepEqual(api.closingIssues(''), []);
+  // 코드로 쓴 예시는 선언이 아니다(Codex 리뷰 2026-11-16).
+  assert.deepEqual(api.closingIssues('예시: `Fixes #12`\n```\nfixes #13\n```\n~~~\ncloses #14\n~~~\nResolves #15'), [15]);
+});
+
+test('PR 본문을 읽어 fixes 번호를 담는다(본문이 없으면 빈 목록)', () => {
+  assert.deepEqual(api.toPull(pr(6, { body: '토큰 만료 처리\n\nFixes #12' })).fixes, [12]);
+  assert.deepEqual(api.toPull(pr(7, { body: null })).fixes, []);
+  assert.deepEqual(api.toPull(pr(8)).fixes, []);
+  // GitHub는 기본 브랜치가 아닌 곳으로 가는 PR의 닫는 키워드를 무시한다(Codex 리뷰 2026-11-16).
+  assert.deepEqual(api.toPull(pr(9, { body: 'Fixes #12', base: { ref: 'release', repo: { default_branch: 'main' } } })).fixes, []);
+  assert.deepEqual(api.toPull(pr(10, { body: 'Fixes #12', base: undefined })).fixes, []);
+});
+
+test('업무 연결: PM-번호와 출처 이슈 fixes 둘 다로 붙이고, 같은 PR은 한 번만', () => {
+  const p = (number, title, fixes) => ({ number, title, state: 'merged', branch: 'b', author: 'a', url: 'u', sha: '', updatedAt: '', fixes });
+  const pulls = [p(34, 'PM-1 토큰', [12]), p(35, '정리', [12, 99]), p(36, 'PM-1 로그', [])];
+  // 이슈 #12에서 업무 1·2가 나왔다. #99는 어느 업무의 출처도 아니다.
+  const links = api.linkPulls(pulls, [1, 2], { 12: [1, 2], 99: [7] });
+  assert.deepEqual(links[1].map((x) => x.number), [34, 35, 36]);
+  assert.deepEqual(links[2].map((x) => x.number), [34, 35]);
+  assert.equal(links[7], undefined);
+  // 출처 이슈를 모르면 PM-번호로만 붙인다.
+  assert.deepEqual(api.linkPulls(pulls, [1, 2])[2], undefined);
 });
 
 test('PR 상태는 열림·머지됨·닫힘으로 나눈다', () => {

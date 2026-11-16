@@ -29,10 +29,12 @@ import {
   CalendarClock,
   Link2,
   GitPullRequest,
+  GitMerge,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/supabase-browser';
 import {
   DETAIL_MAX_PULLS,
+  prSuggestion,
   stalledHours,
   taskRef,
   type Pull,
@@ -473,6 +475,19 @@ export function TaskCollection({
                           {pulls[t.id].length > 2 && <span>+{pulls[t.id].length - 2}</span>}
                         </p>
                       )}
+                      {/* 상세에서 CI를 확인한 뒤 근거를 채운다. 보드는 열어볼 업무만 알린다(CI 실패를 이미 알면 숨김). */}
+                      {writable(t) &&
+                        !t.done &&
+                        prSuggestion(
+                          t,
+                          pulls[t.id] ?? [],
+                          Object.fromEntries(Object.values(details).map((d) => [d.number, d.checks])),
+                        ) === 'complete' && (
+                          <p className="board-card-suggest">
+                            <GitMerge size={12} aria-hidden="true" />
+                            완료 제안
+                          </p>
+                        )}
                       {!t.done && (
                         <p
                           className={

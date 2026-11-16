@@ -288,3 +288,74 @@ test('업무 상세 체크인 이력에 그 업무의 막힌 점이 함께 보�
   assert.doesNotMatch(html, /다른 업무/);
   assert.match(renderToString(createElement(CheckinHistory, { taskId: 3, checkins: [] })), /체크인이 없습니다/);
 });
+
+// 2026-11-16 fixes #n: 본문으로 출처 이슈를 닫는 PR은 그 업무에 붙고, 완료 제안에 해결한 이슈와 남은 이슈를 밝힌다.
+test('개발 현황: fixes #이슈로 붙은 PR은 연결 태그, 해결한 이슈를 밝힌 완료 제안, 남은 이슈 한 줄, 닫힌 이슈 안내는 합친다', () => {
+  const t = { id: 1, title: 'Login 화면', done: false, status: 'in_progress' };
+  const st = (number, over) => ({ repo: 'team/app', number, title: `이슈 ${number}`, url: '', state: 'open', reason: null, changed: false, ...over });
+  const fixer = { number: 34, title: '토큰', state: 'merged', branch: 'hotfix/token', author: 'alice', url: 'https://github.com/team/app/pull/34', fixes: [12] };
+  const props = {
+    task: t,
+    pulls: [fixer],
+    details: { 34: { number: 34, checks: 'success', review: 'none', commits: [] } },
+    canEdit: true,
+    onStart: () => {},
+    onUseEvidence: () => {},
+    issues: [{ repo: 'team/app', number: 12 }, { repo: 'Team/App', number: 15 }],
+    issueStatus: [st(12, { state: 'closed', reason: 'completed' }), st(15)],
+  };
+  const html = renderToString(createElement(PrPanel, props));
+  assert.match(html, /본문에 fixes #12를 쓰면/);
+  assert.match(html, /fixes #12로 연결/);
+  assert.match(html, /PR #34가 머지되며 이슈 #12를 해결했어요/);
+  assert.match(html, /이슈 #15는 아직 열려 있어요/);
+  assert.doesNotMatch(html, /닫힌 이슈가 있어요/);
+  // 모든 출처 이슈를 해결했으면 남은 이슈 줄이 없다.
+  const all = renderToString(createElement(PrPanel, { ...props, pulls: [{ ...fixer, fixes: [12, 15] }] }));
+  assert.match(all, /이슈 #12, #15를 해결했어요/);
+  assert.doesNotMatch(all, /아직 열려 있어요/);
+  // 다른 저장소 PR의 #12는 이 업무의 이슈 #12가 아니다.
+  const other = renderToString(createElement(PrPanel, { ...props, pulls: [{ ...fixer, url: 'https://github.com/team/other/pull/34' }] }));
+  assert.doesNotMatch(other, /로 연결/);
+  assert.match(other, /닫힌 이슈가 있어요: #12/);
+  // PM-번호로 붙은 PR은 태그 없이 지금 문구 그대로.
+  const pm = renderToString(createElement(PrPanel, { ...props, issues: [], issueStatus: [], pulls: [{ ...fixer, branch: 'pm-1-x', fixes: [] }] }));
+  assert.doesNotMatch(pm, /로 연결/);
+  assert.match(pm, /머지됐어요/);
+  // 상태를 확인한 열린 이슈만 '아직 열려 있어요'(Codex 리뷰 2026-11-16).
+  const unknown = renderToString(createElement(PrPanel, { ...props, issueStatus: [st(12, { state: 'closed', reason: 'completed' }), st(15, { state: 'missing' })] }));
+  assert.doesNotMatch(unknown, /아직 열려 있어요/);
+  const failed = renderToString(createElement(PrPanel, { ...props, issueStatus: undefined, issueError: '이슈 상태를 읽지 못했어요' }));
+  assert.doesNotMatch(failed, /아직 열려 있어요/);
+  // 완료 제안이 안 보이면(팀원·다른 PR이 열림) 닫힌 이슈 안내를 그대로 둔다.
+  const viewer = renderToString(createElement(PrPanel, { ...props, canEdit: false }));
+  assert.doesNotMatch(viewer, /해결했어요/);
+  assert.match(viewer, /닫힌 이슈가 있어요: #12/);
+  const waiting = renderToString(createElement(PrPanel, { ...props, pulls: [fixer, { ...fixer, number: 35, state: 'open', fixes: [] }] }));
+  assert.doesNotMatch(waiting, /해결했어요/);
+  assert.match(waiting, /닫힌 이슈가 있어요: #12/);
+});
+
+test('보드 카드: 고칠 수 있는 사람에게 연결 PR이 모두 머지된 업무는 완료 제안이 보인다', () => {
+  const props = (over) => ({
+    sprint: { revision: 1, finished: false, people: [{ name: '도윤' }, { name: '민지' }], tasks: [task(1, { status: 'in_progress' })] },
+    plan: { finishes: {}, unscheduled: [] },
+    asOf: '2026-11-09T00:00:00.000Z',
+    me: { person: 0, role: 'owner', agreedAt: '2026-11-08T00:00:00.000Z' },
+    members: [{ person: 0, display_name: '도윤' }],
+    checkins: [],
+    busy: false,
+    error: '',
+    mine: false,
+    mutate: async () => true,
+    onEdit: () => {},
+    onAdd: () => {},
+    pulls: { 1: [{ ...pull(10, 'merged'), fixes: [] }] },
+    ...over,
+  });
+  assert.match(renderToString(createElement(TaskCollection, props())), /완료 제안/);
+  const notMine = { person: 1, role: 'member', agreedAt: '2026-11-08T00:00:00.000Z' };
+  assert.doesNotMatch(renderToString(createElement(TaskCollection, props({ me: notMine }))), /완료 제안/);
+  const waiting = { 1: [{ ...pull(10, 'merged'), fixes: [] }, { ...pull(11, 'open'), fixes: [] }] };
+  assert.doesNotMatch(renderToString(createElement(TaskCollection, props({ pulls: waiting }))), /완료 제안/);
+});

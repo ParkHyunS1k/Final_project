@@ -115,7 +115,7 @@ function issue(n, over = {}) {
   };
 }
 // 가짜 GitHub. 호출 URL을 기록하고 경로별 응답을 돌려준다.
-function fakeGithub({ list = [], byNumber = {}, visibility = 'public', status = 200 } = {}) {
+function fakeGithub({ list = [], byNumber = {}, visibility = 'public', status = 200, pulls = [] } = {}) {
   const calls = [];
   const fetchImpl = async (url) => {
     calls.push(String(url));
@@ -124,6 +124,7 @@ function fakeGithub({ list = [], byNumber = {}, visibility = 'public', status = 
     if (/^\/repos\/[^/]+\/[^/]+$/.test(u.pathname))
       return Response.json({ private: visibility !== 'public', visibility });
     if (u.pathname.endsWith('/issues')) return Response.json(list);
+    if (u.pathname.endsWith('/pulls')) return Response.json(pulls);
     const m = u.pathname.match(/\/issues\/(\d+)$/);
     if (m && byNumber[m[1]]) return Response.json(byNumber[m[1]]);
     return new Response('not found', { status: 404 });
@@ -808,4 +809,30 @@ test('출처 이슈 상태: 응답이 너무 커서 못 읽으면 없어진 이�
   api.useGithub({ fetchImpl: fakeGithub({ byNumber: { 1: issue(1, { body: 'x'.repeat(1_000_001) }) } }).fetchImpl });
   const body = await json(await prsGet('huge-owner', projectId, '&issuesOf=1'), 502);
   assert.ok(body.error);
+});
+
+// 2026-11-16 fixes #n: PR 본문에 출처 이슈를 닫는 키워드가 있으면 그 이슈에서 만든 업무에 PR을 붙인다.
+test('PR 본문의 fixes #이슈로 그 이슈에서 만든 업무에 PR이 붙고, 다른 저장소에서 가져온 같은 번호에는 안 붙는다', async () => {
+  const projectId = await linkedTask('fix-owner', [ghIssue(12)]);
+  await run('INSERT INTO sprint_tasks(owner,id,title,person,remaining) VALUES(?,?,?,0,2)', projectId, 1, '토큰 만료');
+  await api.setProjectRepo(projectId, 'fix-owner', repo, 0, new Date());
+  const pull = (number, body) => ({
+    number,
+    title: '토큰 만료 처리',
+    state: 'closed',
+    merged_at: '2026-11-16T00:00:00Z',
+    body,
+    html_url: `https://github.com/team/app/pull/${number}`,
+    user: { login: 'alice' },
+    head: { ref: 'hotfix/token', sha: 'a'.repeat(40) },
+    base: { ref: 'main', repo: { default_branch: 'main' } },
+  });
+  api.useGithub({ fetchImpl: fakeGithub({ pulls: [pull(34, 'Fixes #12'), pull(35, 'fixes #99'), pull(36, 'see #12')] }).fetchImpl });
+  const body = await json(await prsGet('fix-owner', projectId), 200);
+  assert.deepEqual(body.links[1].map((p) => p.number), [34]);
+  assert.deepEqual(body.links[1][0].fixes, [12]);
+  // 저장소를 바꾸면 새 저장소의 #12는 예전 저장소에서 가져온 이슈 #12가 아니다.
+  await api.setProjectRepo(projectId, 'fix-owner', { owner: 'team', name: 'other' }, 1, new Date());
+  const other = await json(await prsGet('fix-owner', projectId), 200);
+  assert.equal(other.links[1], undefined);
 });
