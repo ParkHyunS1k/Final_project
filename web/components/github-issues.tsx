@@ -103,15 +103,17 @@ export function GithubIssues({
   projectId,
   writable,
   onImported,
+  onSetupRepo,
 }: {
   projectId: string;
   writable: boolean;
   onImported: (sourceId: string) => Promise<void>;
+  /** 저장소 등록·변경은 프로젝트 탭에서 한다(2026-11-16). 그 탭으로 옮겨 준다. */
+  onSetupRepo?: () => void;
 }) {
   const [repo, setRepo] = useState<RepoView>(null);
   const [canManage, setCanManage] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [url, setUrl] = useState('');
+  const [loaded, setLoaded] = useState(false);
   const [issues, setIssues] = useState<PickerIssue[] | null>(null);
   // 목록을 만든 저장소 version. 가져오기 요청에 함께 보내 저장소가 바뀐 뒤의 오래된 선택을 서버가 거절하게 한다.
   const [listVersion, setListVersion] = useState(0);
@@ -124,6 +126,7 @@ export function GithubIssues({
       .then((d) => {
         setRepo(d.repo);
         setCanManage(d.canManage);
+        setLoaded(true);
       })
       .catch((e: Error) => setMessage(e.message));
   }, [projectId]);
@@ -140,6 +143,7 @@ export function GithubIssues({
     }
   }
 
+  if (!loaded) return message ? <output className="tiny muted">{message}</output> : null;
   // 팀원에게는 등록된 저장소만 보인다. 등록·가져오기는 팀장만.
   if (!canManage)
     return (
@@ -152,51 +156,31 @@ export function GithubIssues({
         GitHub 이슈 가져오기는 팀장만 할 수 있어요.
       </p>
     );
+  if (!repo)
+    return (
+      <section className="github-issues github-empty">
+        <p>이슈를 가져오려면 먼저 프로젝트 저장소를 등록해 주세요.</p>
+        {onSetupRepo && (
+          <button className="btn" onClick={onSetupRepo}>
+            프로젝트 탭에서 등록
+          </button>
+        )}
+      </section>
+    );
 
   return (
     <section className="github-issues">
       <div className="section-heading">
-        <span className="tiny muted">{repo && !editing ? '등록된 저장소의 열린 이슈를 골라 가져오면 바로 변경안을 만들어요.' : '공개 저장소를 한 번 등록해 주세요.'}</span>
-        {repo && !editing && (
-          <span className="tiny muted">
-            <a href={repo.url} target="_blank" rel="noreferrer">{`${repo.owner}/${repo.name}`}</a>{' '}
-            <button className="btn" disabled={busy || !writable} onClick={() => setEditing(true)}>
-              변경
-            </button>
-          </span>
+        <span className="tiny muted">
+          저장소 <a href={repo.url} target="_blank" rel="noreferrer">{`${repo.owner}/${repo.name}`}</a>
+        </span>
+        {onSetupRepo && (
+          <button className="text-link" onClick={onSetupRepo}>
+            프로젝트 탭에서 변경
+          </button>
         )}
       </div>
-      {!repo || editing ? (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void run(async () => {
-              const d = await call<{ repo: RepoView }>('/api/github-issues', {
-                action: 'setRepo',
-                projectId,
-                repoUrl: url,
-                version: repo?.version ?? 0,
-              });
-              setRepo(d.repo);
-              setEditing(false);
-              setIssues(null);
-            });
-          }}
-        >
-          <label className="input-label" htmlFor="github-repo-url">
-            공개 GitHub 저장소 주소
-          </label>
-          <input
-            id="github-repo-url"
-            placeholder="https://github.com/아이디/저장소"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-          />
-          <button className="btn primary" disabled={busy || !writable || !url.trim()}>
-            저장소 등록
-          </button>
-        </form>
-      ) : issues === null ? (
+      {issues === null ? (
         <button
           className="btn"
           disabled={busy || !writable}
@@ -240,5 +224,132 @@ export function GithubIssues({
       )}
       {message && <output className="tiny muted">{message}</output>}
     </section>
+  );
+}
+
+/** 프로젝트 탭 '프로젝트 정보'의 저장소 칸(2026-11-16, 업무 탭에서 옮김). 등록·변경은 팀장만, 서버가 다시 검사한다. */
+export function ProjectRepo({ projectId, writable }: { projectId: string; writable: boolean }) {
+  const [repo, setRepo] = useState<RepoView>(null);
+  const [canManage, setCanManage] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  useEffect(() => {
+    void call<{ repo: RepoView; canManage: boolean }>(`/api/github-issues?project=${encodeURIComponent(projectId)}`)
+      .then((d) => {
+        setRepo(d.repo);
+        setCanManage(d.canManage);
+        setLoaded(true);
+      })
+      .catch((e: Error) => setMessage(e.message));
+  }, [projectId]);
+  if (!loaded) return <span className="tiny muted">{message || '불러오는 중…'}</span>;
+  return (
+    <RepoField
+      repo={repo}
+      canManage={canManage}
+      writable={writable}
+      busy={busy}
+      editing={editing}
+      url={url}
+      message={message}
+      onEdit={() => {
+        setUrl(repo?.url ?? '');
+        setEditing(true);
+      }}
+      onCancel={() => setEditing(false)}
+      onUrl={setUrl}
+      onSubmit={() => {
+        setBusy(true);
+        setMessage('');
+        call<{ repo: RepoView }>('/api/github-issues', {
+          action: 'setRepo',
+          projectId,
+          repoUrl: url,
+          version: repo?.version ?? 0,
+        })
+          .then((d) => {
+            setRepo(d.repo);
+            setEditing(false);
+            setMessage('저장소를 저장했어요.');
+          })
+          .catch((e: Error) => setMessage(e.message))
+          .finally(() => setBusy(false));
+      }}
+    />
+  );
+}
+
+export function RepoField({
+  repo,
+  canManage,
+  writable,
+  busy,
+  editing,
+  url,
+  message,
+  onEdit,
+  onCancel,
+  onUrl,
+  onSubmit,
+}: {
+  repo: RepoView;
+  canManage: boolean;
+  writable: boolean;
+  busy: boolean;
+  editing: boolean;
+  url: string;
+  message: string;
+  onEdit: () => void;
+  onCancel: () => void;
+  onUrl: (url: string) => void;
+  onSubmit: () => void;
+}) {
+  const note = message && <output className="tiny muted">{message}</output>;
+  if (!canManage || (repo && !editing))
+    return (
+      <span className="repo-field">
+        {repo ? (
+          <a href={repo.url} target="_blank" rel="noreferrer">{`${repo.owner}/${repo.name}`}</a>
+        ) : (
+          <span className="muted">아직 없어요 · 팀장이 등록해요</span>
+        )}
+        {canManage && (
+          <button className="text-link" disabled={busy || !writable} onClick={onEdit}>
+            변경
+          </button>
+        )}
+        {note}
+      </span>
+    );
+  return (
+    <form
+      className="repo-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit();
+      }}
+    >
+      <input
+        aria-label="공개 GitHub 저장소 주소"
+        placeholder="https://github.com/아이디/저장소"
+        value={url}
+        onChange={(e) => onUrl(e.target.value)}
+      />
+      <span className="repo-form-actions">
+        <button className="btn primary" disabled={busy || !writable || !url.trim()}>
+          {repo ? '바꾸기' : '저장소 등록'}
+        </button>
+        {repo && (
+          <button type="button" className="btn" disabled={busy} onClick={onCancel}>
+            취소
+          </button>
+        )}
+      </span>
+      <span className="tiny muted">공개 저장소만 돼요. 등록하면 업무 탭에서 이슈를 가져오고, PR이 업무에 연결돼요.</span>
+      {note}
+    </form>
   );
 }

@@ -448,6 +448,7 @@ export function ChangeReview({
   me,
   writable,
   onApplied,
+  onSetupRepo,
 }: {
   projectId: string;
   revision: number;
@@ -456,6 +457,8 @@ export function ChangeReview({
   me: ProjectMeta['me'];
   writable: boolean;
   onApplied: (state: unknown) => void;
+  /** GitHub 이슈 탭에서 저장소 등록·변경이 필요할 때 프로젝트 탭으로 옮긴다. */
+  onSetupRepo?: () => void;
 }) {
   const [sources, setSources] = useState<SourceSummary[]>([]);
   const [sourceId, setSourceId] = useState('');
@@ -721,6 +724,7 @@ export function ChangeReview({
                     <GithubIssues
                       projectId={projectId}
                       writable={writable}
+                      onSetupRepo={onSetupRepo}
                       onImported={async (id) => {
                         await analyzeSaved(async () => id);
                       }}

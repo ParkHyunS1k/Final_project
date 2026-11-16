@@ -12,11 +12,10 @@ import { TaskCollection } from '@/components/task-collection';
 import { ChangeReview } from '@/components/change-review';
 import { RaceHome, TeamCheckins } from '@/components/race-home';
 import { TensionLayer } from '@/components/tension-layer';
-import { TeamListing } from '@/components/team-directory';
+import { ProjectOverview } from '@/components/project-overview';
+import { ProjectRepo } from '@/components/github-issues';
 import {
   ProjectWorkspace,
-  ProjectDetails,
-  TeamInvites,
   type ProjectMeta,
   type WorkspaceNav,
   workspaceViews,
@@ -24,7 +23,7 @@ import {
 import { reportChoices, sprintDay, type View } from '@/lib/race';
 import { RaceClock } from '@/components/race-clock';
 import { SidebarTrigger } from '@/components/ui/sidebar';
-import { Check, Clock3, Sparkles, ShieldCheck } from 'lucide-react';
+import { Check, Sparkles } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -66,6 +65,8 @@ export type Deliverable = {
 };
 type State = ProjectMeta & {
   asOf: string;
+  listed?: boolean;
+  joinRequests?: { id: string; display_name: string; goal_version: number; created_at: string; restricted?: boolean }[];
   lifecycle: Lifecycle;
   policy: {
     goalVersion: number;
@@ -114,6 +115,7 @@ type State = ProjectMeta & {
     created_at: string;
   }[];
 };
+export type DashboardState = State;
 type Modal = 'evidence' | null;
 export default function ProjectDashboard({
   onProject,
@@ -380,7 +382,6 @@ function Dashboard({
     state.me.agreedGoalVersion === state.policy.goalVersion &&
     !state.me.leftAt;
   const tasks = s?.tasks ?? [];
-  const done = tasks.filter((t) => t.done).length;
   const meetingProposals =
     state && plan
       ? meetingSuggestions(
@@ -704,6 +705,7 @@ function Dashboard({
                     me={state!.me}
                     writable={writable && agreedToGoal && !state!.me.leftAt}
                     onApplied={(next) => setState(next as State)}
+                    onSetupRepo={() => setTab('project')}
                   />
                 ) : (
                   <TaskCollection
@@ -742,9 +744,16 @@ function Dashboard({
               </section>
             )}
             {tab === 'project' && (
-              <section className="work-section project-stack">
-                <ProjectDetails state={state!} />
-                {state!.me.role === 'owner' &&
+              <ProjectOverview
+                state={state!}
+                lifecycle={lifecycle}
+                phaseLabel={phase.label}
+                colors={people.map((p) => p.color)}
+                writable={writable}
+                canEdit={writable && agreedToGoal}
+                busy={busy}
+                goalEditor={
+                  state!.me.role === 'owner' &&
                   lifecycle === 'draft' &&
                   state!.policy?.completionMode !== 'tasks' &&
                   state!.agreement && (
@@ -760,256 +769,42 @@ function Dashboard({
                         )
                       }
                     />
-                  )}
-                <section className="project-block">
-                  <div className="section-heading">
-                    <h2>팀원 · {state!.members.length}/4명</h2>
-                  </div>
-                  <div className="team-card">
-                    {state!.members.map((m) => (
-                      <div className="member" key={m.person}>
-                        <span
-                          className="avatar"
-                          style={{
-                            background: people[m.person]?.color ?? '#e2e2de',
-                          }}
-                        >
-                          {m.display_name.slice(0, 1)}
-                        </span>
-                        <div>
-                          <b>{m.display_name}</b>
-                          {m.github_login && (
-                            <a
-                              href={'https://github.com/' + m.github_login}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              @{m.github_login}
-                            </a>
-                          )}
-                          <span>
-                            {m.role === 'owner' ? '팀장' : '팀원'} ·{' '}
-                            {/* 2026-10-15에 참여 중단 기능을 뺐다. 그 전에 남은 기록만 표시한다. */}
-                            {m.left_at
-                              ? '참여 중단'
-                              : m.agreed_goal_version ===
-                                  state!.policy?.goalVersion
-                                ? `목표 v${m.agreed_goal_version} 동의`
-                                : '재동의 필요'}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <TeamInvites
-                    state={state!}
-                    refresh={load}
-                    link={inviteLink}
-                    setLink={setInviteLink}
-                    writable={writable}
+                  )
+                }
+                repo={
+                  <ProjectRepo
+                    projectId={projectId}
+                    writable={writable && agreedToGoal && !state!.me.leftAt}
                   />
-                  <TeamListing
-                    state={state!}
-                    refresh={load}
-                    writable={writable}
-                  />
-                  {/* 초대는 프로젝트 revision을 올리므로 이 화면도 다시 읽어야 공개 설정이 409가 나지 않는다. */}
-                  {teamExtra?.(projectId, load)}
-                </section>
-                <section className="project-block">
-                  <div className="section-heading">
-                    <h2>
-                      진행 기록 ·{' '}
-                      {state!.policy?.completionMode === 'tasks'
-                        ? '업무'
-                        : '결과물'}{' '}
-                      {state!.completion.confirmed}/{state!.completion.total}
-                    </h2>
-                  </div>
-                  {state!.policy?.completionMode === 'tasks' ? (
-                    <div className="project-panel">
-                      <h3>완료한 업무가 나의 경험으로 남아요.</h3>
-                      <p>
-                        별도의 필수 결과물이나 완료 기준 입력은 없습니다. 진행할
-                        업무를 마치고 실제 수행 근거를 남기면 프로젝트를 완료할
-                        수 있어요.
-                      </p>
-                      <p>
-                        {state!.completion.ready
-                          ? '선택한 업무의 완료와 근거 기록을 확인했습니다.'
-                          : `남은 업무: ${state!.completion.missing.join(', ') || '등록된 업무 없음'}`}
-                      </p>
-                      <div className="hub-actions">
-                        <button
-                          className="btn primary"
-                          disabled={
-                            busy ||
-                            !isOwner ||
-                            lifecycle !== 'active' ||
-                            !state!.completion.ready
-                          }
-                          onClick={() =>
-                            mutate(
-                              'finish',
-                              {},
-                              '프로젝트 완료를 기록했습니다.',
-                            )
-                          }
-                        >
-                          {lifecycle === 'completed'
-                            ? '완료 기록 저장됨'
-                            : '프로젝트 완료 기록'}
-                        </button>
-                        <a
-                          className="btn"
-                          href={
-                            '/app?tab=experience&project=' +
-                            encodeURIComponent(projectId)
-                          }
-                        >
-                          나의 경험으로 가져오기
-                        </a>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="refund-grid">
-                      <div className="refund-main">
-                        <ShieldCheck size={30} />
-                        <h2>
-                          완주는 처음 약속한 결과물로,
-                          <br />
-                          보고 횟수로 판정하지 않아요.
-                        </h2>
-                        <p>
-                          체크리스트를 모두 끝냈는지와 합의한 결과물을
-                          달성했는지는 다릅니다. 업무 {done}/{tasks.length}개가
-                          완료되어도 필수 결과물이 미확인이면 완주할 수
-                          없습니다.
-                        </p>
-                        <div className="receipt">
-                          <div>
-                            <span>이용료 예시</span>
-                            <b>100,000원</b>
-                          </div>
-                          <div>
-                            <span>보증금 예시</span>
-                            <b>200,000원</b>
-                          </div>
-                          <div className="receipt-total">
-                            <span>실제 결제·환급</span>
-                            <b>연결 안 됨</b>
-                          </div>
-                        </div>
-                        <p>
-                          결과물 근거 확인과 금전 환급 판정은 별개입니다. AI가
-                          증빙의 진실성을 자동으로 보증하지 않습니다.
-                        </p>
-                      </div>
-                      <div className="refund-criteria">
-                        <span className="eyebrow">완주 기준</span>
-                        <h3>합의한 결과물</h3>
-                        {state!.deliverables.map((d) => (
-                          <div className="criterion" key={d.deliverableId}>
-                            <span
-                              className={
-                                d.confirmed
-                                  ? 'criteria-check ok'
-                                  : 'criteria-check'
-                              }
-                            >
-                              {d.confirmed ? (
-                                <Check size={16} />
-                              ) : (
-                                <Clock3 size={16} />
-                              )}
-                            </span>
-                            <div>
-                              <b>{d.title}</b>
-                              <p>{d.evidence || '근거가 아직 없습니다.'}</p>
-                              {writable && agreedToGoal && (
-                                <>
-                                  <button
-                                    className="text-link"
-                                    disabled={busy}
-                                    onClick={() => {
-                                      setEvidenceId(d.deliverableId);
-                                      setEvidence(d.evidence);
-                                      setDialog('evidence');
-                                    }}
-                                  >
-                                    근거 기록·수정
-                                  </button>
-                                  {isOwner && (
-                                    <button
-                                      className="text-link"
-                                      disabled={busy || !d.evidence}
-                                      onClick={() =>
-                                        mutate(
-                                          'deliverableConfirm',
-                                          {
-                                            deliverableId: d.deliverableId,
-                                            confirmed: !d.confirmed,
-                                          },
-                                          d.confirmed
-                                            ? '확인을 취소했습니다.'
-                                            : '팀장 확인을 저장했습니다.',
-                                        )
-                                      }
-                                    >
-                                      {d.confirmed
-                                        ? '확인 취소'
-                                        : '팀장이 직접 확인'}
-                                    </button>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                        <button
-                          className="btn primary wide"
-                          disabled={
-                            busy ||
-                            !isOwner ||
-                            lifecycle !== 'active' ||
-                            !state!.completion.ready
-                          }
-                          onClick={() =>
-                            mutate(
-                              'finish',
-                              {},
-                              '완주 확인을 저장했습니다. 실제 환급은 발생하지 않습니다.',
-                            )
-                          }
-                        >
-                          {lifecycle === 'completed'
-                            ? '완주 기록 저장됨'
-                            : '기한 내 완주 확인'}
-                        </button>
-                        <p className="tiny muted">
-                          확인 자료는 코드 저장소와 실행 방법, 핵심 기능 데모
-                          또는 영상, 팀원별 기여 내용입니다. 배포 URL은
-                          프로젝트에서 별도 합의한 경우에만 필요합니다.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </section>
-                <section className="project-block">
-                  <div className="section-heading">
-                    <h2>기타</h2>
-                  </div>
-                  <div className="project-actions">
-                    <button
-                      className="btn"
-                      disabled={busy}
-                      onClick={exportProject}
-                    >
-                      내보내기
-                    </button>
-                  </div>
-                </section>
-              </section>
+                }
+                // 초대는 프로젝트 revision을 올리므로 이 화면도 다시 읽어야 공개 설정이 409가 나지 않는다.
+                teamExtra={teamExtra?.(projectId, load)}
+                inviteLink={inviteLink}
+                setInviteLink={setInviteLink}
+                refresh={load}
+                onFinish={() =>
+                  void mutate(
+                    'finish',
+                    {},
+                    state!.policy?.completionMode === 'tasks'
+                      ? '프로젝트 완료를 기록했습니다.'
+                      : '완주 확인을 저장했습니다. 실제 환급은 발생하지 않습니다.',
+                  )
+                }
+                onEvidence={(d) => {
+                  setEvidenceId(d.deliverableId);
+                  setEvidence(d.evidence);
+                  setDialog('evidence');
+                }}
+                onConfirm={(d) =>
+                  void mutate(
+                    'deliverableConfirm',
+                    { deliverableId: d.deliverableId, confirmed: !d.confirmed },
+                    d.confirmed ? '확인을 취소했습니다.' : '팀장 확인을 저장했습니다.',
+                  )
+                }
+                onExport={() => void exportProject()}
+              />
             )}
           </>
         )}
