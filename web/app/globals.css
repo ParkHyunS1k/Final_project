@@ -2684,6 +2684,14 @@ textarea {
   border-top: none;
   padding-top: 0;
 }
+.team-panel-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--heat-50);
+  color: var(--heat-700);
+  font-size: 13px;
+}
 .team-panel-close {
   position: absolute;
   top: 14px;

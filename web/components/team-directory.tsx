@@ -70,6 +70,11 @@ export function homeTeamAction(t: { joined: boolean; join_open: boolean; members
   return t.members >= 4 ? 'full' : 'apply';
 }
 
+/** 확인 체크는 그 팀·그 목표 버전에만 유효하다(다른 팀이나 바뀐 목표로 이어지지 않게). */
+export function agreementFor(team: Pick<Team, 'projectId' | 'goalVersion'>) {
+  return `${team.projectId}:v${team.goalVersion}`;
+}
+
 function leftText(ms: number) {
   const minutes = Math.max(0, Math.floor(ms / 60_000));
   const h = Math.floor(minutes / 60);
@@ -166,6 +171,7 @@ export function TeamPanel({
   agreed,
   busy,
   restricted,
+  error = '',
   onAgree,
   onSubmit,
   onClose,
@@ -175,6 +181,8 @@ export function TeamPanel({
   agreed: boolean;
   busy: boolean;
   restricted: boolean;
+  /** 신청 실패 이유. 모달이 열린 동안 바깥은 읽히지 않으므로 패널 안에서 알린다. */
+  error?: string;
   onAgree: (agreed: boolean) => void;
   onSubmit: () => void;
   onClose: () => void;
@@ -198,7 +206,8 @@ export function TeamPanel({
           onSubmit();
         }}
       >
-        <button type="button" className="team-panel-close" aria-label="닫기" onClick={onClose}>
+        {/* close()를 거쳐야 여는 버튼으로 초점이 돌아간다. 부모 정리는 onClose가 한다. */}
+        <button type="button" className="team-panel-close" aria-label="닫기" onClick={() => ref.current?.close()}>
           <X size={18} aria-hidden="true" />
         </button>
         <div className="team-card-top">
@@ -230,6 +239,11 @@ export function TeamPanel({
           <input type="checkbox" checked={agreed} onChange={(e) => onAgree(e.target.checked)} />
           {`목표 v${team.goalVersion}·기능 범위·완료 기준을 확인했고, 이 목표로 참여를 신청합니다.`}
         </label>
+        {error && (
+          <p className="team-panel-error" role="alert">
+            {error}
+          </p>
+        )}
         <button className="btn primary wide" disabled={!agreed || busy || restricted}>
           참여 신청 보내기
         </button>
@@ -281,7 +295,8 @@ export function TeamDirectory({
   const [teams, setTeams] = useState<Team[] | null>(null);
   const [requests, setRequests] = useState<JoinRequest[]>([]);
   const [open, setOpen] = useState('');
-  const [agreed, setAgreed] = useState(false);
+  // 확인한 팀·목표 버전(agreementFor). 팀을 바꾸거나 목표가 바뀌면 저절로 풀린다.
+  const [agreedTo, setAgreedTo] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [filter, setFilter] = useState<TeamFilter>('all');
@@ -317,17 +332,14 @@ export function TeamDirectory({
     try {
       await work();
       setOpen('');
-      setAgreed(false);
+      setAgreedTo('');
       // 목록을 다시 받은 뒤에 결과를 알린다. 안내와 화면 상태가 어긋나지 않게.
       await load();
       setMessage(done);
     } catch (e) {
       const changed = (e as { details?: Team }).details;
-      // 저장 시점에 목표가 바뀌었으면 최신 목표로 다시 확인받는다(패널은 열어 둔다).
-      if (changed) {
-        setTeams(withTeam(teams, changed));
-        setAgreed(false);
-      }
+      // 저장 시점에 목표가 바뀌었으면 최신 목표로 다시 확인받는다(패널은 열어 둔다, 버전이 바뀌어 체크가 풀린다).
+      if (changed) setTeams(withTeam(teams, changed));
       setMessage((e as Error).message);
       await load().catch(() => undefined);
     } finally {
@@ -383,8 +395,8 @@ export function TeamDirectory({
                   busy={busy}
                   restricted={Boolean(restriction)}
                   onOpen={() => {
+                    setMessage('');
                     setOpen(t.projectId);
-                    setAgreed(false);
                   }}
                 />
               ))}
@@ -399,11 +411,15 @@ export function TeamDirectory({
           key={chosen.projectId}
           team={chosen}
           now={now}
-          agreed={agreed}
+          agreed={agreedTo === agreementFor(chosen)}
           busy={busy}
           restricted={Boolean(restriction)}
-          onAgree={setAgreed}
-          onClose={() => setOpen('')}
+          error={message}
+          onAgree={(yes) => setAgreedTo(yes ? agreementFor(chosen) : '')}
+          onClose={() => {
+            setOpen('');
+            setMessage('');
+          }}
           onSubmit={() =>
             void run(
               () =>
@@ -412,7 +428,7 @@ export function TeamDirectory({
                   projectId: chosen.projectId,
                   // 이 화면에서 실제로 확인한 목표 버전을 보낸다.
                   goalVersion: chosen.goalVersion,
-                  agreed,
+                  agreed: agreedTo === agreementFor(chosen),
                 }),
               `${chosen.title}에 참여를 신청했습니다. 팀장이 승인하면 홈에 나타납니다.`,
             )

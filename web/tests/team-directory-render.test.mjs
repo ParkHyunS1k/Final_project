@@ -21,7 +21,7 @@ await build({
   packages: 'external',
   alias: { '@': process.cwd() },
 });
-const { MyRequests, TeamDirectory, TeamListing, InterestList, TeamCard, TeamPanel, visibleTeams, homeTeamAction } = await import(
+const { MyRequests, TeamDirectory, TeamListing, InterestList, TeamCard, TeamPanel, visibleTeams, homeTeamAction, agreementFor } = await import(
   pathToFileURL(outfile).href
 );
 const at = '2026-10-15T03:50:00.000Z';
@@ -111,6 +111,21 @@ void test('신청 패널: 목표 버전·기능 범위·완료 기준 전문, �
   assert.match(tmpl, /모든 업무를 완료하고 근거를 남기면/);
   const blocked = renderToString(createElement(TeamPanel, { ...props, agreed: true, restricted: true }));
   assert.match(blocked, /<button[^>]*disabled=""[^>]*>참여 신청 보내기/);
+});
+
+// Codex 리뷰(2026-11-16): 확인 체크는 그 팀·그 목표 버전에만 유효하다.
+void test('동의는 확인한 팀과 목표 버전에 묶여, 다른 팀이나 바뀐 목표에는 이어지지 않는다', () => {
+  const key = agreementFor(team({ projectId: 'p_a', goalVersion: 2 }));
+  assert.equal(key, agreementFor(team({ projectId: 'p_a', goalVersion: 2 })));
+  assert.notEqual(key, agreementFor(team({ projectId: 'p_b', goalVersion: 2 })));
+  assert.notEqual(key, agreementFor(team({ projectId: 'p_a', goalVersion: 3 })));
+});
+
+void test('신청 실패 이유는 열린 패널 안에서 알린다(모달 바깥은 보조기술이 읽지 못한다)', () => {
+  const base = { team: team(), now, agreed: false, busy: false, restricted: false, onAgree: () => {}, onSubmit: () => {}, onClose: () => {} };
+  const html = renderToString(createElement(TeamPanel, { ...base, error: '팀 목표가 바뀌었습니다.' }));
+  assert.match(html, /role="alert"[^>]*>팀 목표가 바뀌었습니다\./);
+  assert.doesNotMatch(renderToString(createElement(TeamPanel, base)), /role="alert"/);
 });
 
 void test('필터: 상태 칩과 자리 있는 팀만. 꽉 찼거나 신청할 수 없는 팀은 맨 뒤로', () => {
