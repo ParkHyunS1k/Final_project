@@ -108,6 +108,7 @@ test('새 프로젝트는 비공개라 목록에 없고, 팀장이 공개하면 
       goal: goalFields.goal,
       scope: goalFields.scope,
       completionCriteria: goalFields.completionCriteria,
+      skills: [],
       lifecycle: 'draft',
       goalVersion: 1,
       members: 1,

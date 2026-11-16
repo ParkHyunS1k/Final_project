@@ -22,7 +22,7 @@ import {
 } from './career/profile';
 import { readProfile, readExperiences, experienceSkills } from './career/store';
 import { dateInSeoul } from './sprint';
-import { setListed } from './teams';
+import { setListed, windowSql } from './teams';
 import { assertNotRestricted } from './sanction';
 
 export type HubRecord = {
@@ -91,11 +91,11 @@ export async function readHub(user: Identity) {
         .prepare(`SELECT p.project_id,s.title,d.goal,h.template,h.scope_level,p.lifecycle,p.started_at,p.deadline_at,
       (SELECT count(*)::int FROM project_members m WHERE m.project_id=p.project_id AND m.left_at IS NULL) AS members,
       EXISTS(SELECT 1 FROM project_members m WHERE m.project_id=p.project_id AND m.user_id=? AND m.left_at IS NULL) AS joined,
-      EXISTS(SELECT 1 FROM hub_interests i WHERE i.project_id=p.project_id AND i.user_id=?) AS interested
+      ${windowSql('p')} AS join_open
       FROM project_policy p JOIN sprints s ON s.owner=p.project_id JOIN project_details d ON d.project_id=p.project_id LEFT JOIN hub_projects h ON h.project_id=p.project_id
       WHERE p.listed=true AND EXISTS(SELECT 1 FROM project_members owner WHERE owner.project_id=p.project_id AND owner.role='owner' AND owner.left_at IS NULL) AND p.lifecycle IN ('draft','active') AND (p.deadline_at IS NULL OR p.deadline_at>now())
       ORDER BY CASE WHEN p.lifecycle='active' THEN 0 ELSE 1 END,s.updated_at DESC LIMIT 40`)
-        .bind(user.id, user.id)
+        .bind(user.id)
         .all<{
           project_id: string;
           title: string;
@@ -107,7 +107,8 @@ export async function readHub(user: Identity) {
           deadline_at: Date | null;
           members: number;
           joined: boolean;
-          interested: boolean;
+          /** 지금 참여 신청을 받는가(팀 찾기와 같은 참여 창). 홈은 진행 중 팀을 마감까지 보여준다. */
+          join_open: boolean;
         }>(),
       db
         .prepare(

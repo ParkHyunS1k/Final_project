@@ -579,6 +579,11 @@ test('template teams share listing state and support main participation approval
     await api.teamsGET(req(applicant, null, '/api/teams')),
   );
   assert.ok(listed.teams.some((t) => t.projectId === id));
+  // 팀 찾기 카드의 기술 태그: 템플릿 업무의 기술(중복 없이 최대 4개).
+  const skills = listed.teams.find((t) => t.projectId === id).skills;
+  assert.ok(skills.length > 0 && skills.length <= 4);
+  assert.equal(new Set(skills).size, skills.length);
+  assert.ok(skills.every((k) => typeof k === 'string'));
   const application = await json(
     await api.teamsPOST(
       req(
@@ -681,6 +686,17 @@ test('main projects appear on the unified home and can still start solo', async 
   assert.ok(card);
   assert.equal(card.template, null);
   assert.equal(card.goal, 'Build a working service');
+  // 직접 만든 팀은 기술 태그가 없다.
+  const found = (await json(await api.teamsGET(req('merged-main-visitor', null, '/api/teams')))).teams.find((t) => t.projectId === id);
+  assert.deepEqual(found.skills, []);
+  // 홈 카드의 신청 가능 여부는 팀 찾기와 같은 참여 창(준비 중, 시작 후 24시간)을 따른다.
+  assert.equal(card.join_open, true);
   const started = await sprint(owner, id, 'start');
   assert.equal(started.lifecycle, 'active');
+  const live = (await read('merged-main-visitor')).directory.find((t) => t.project_id === id);
+  assert.equal(live.join_open, true);
+  await db.run("UPDATE project_policy SET started_at=now()-interval '25 hours' WHERE project_id=?", id);
+  const late = (await read('merged-main-visitor')).directory.find((t) => t.project_id === id);
+  assert.ok(late, '홈은 진행 중 팀을 마감까지 보여준다');
+  assert.equal(late.join_open, false);
 });

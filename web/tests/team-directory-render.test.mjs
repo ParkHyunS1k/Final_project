@@ -21,10 +21,12 @@ await build({
   packages: 'external',
   alias: { '@': process.cwd() },
 });
-const { MyRequests, TeamDirectory, TeamListing, InterestList } = await import(pathToFileURL(outfile).href);
+const { MyRequests, TeamDirectory, TeamListing, InterestList, TeamCard, TeamPanel, visibleTeams, homeTeamAction } = await import(
+  pathToFileURL(outfile).href
+);
 const at = '2026-10-15T03:50:00.000Z';
 
-void test('공개 카드가 없어도 대기 중인 내 신청에는 취소 버튼이 있고, 처리된 신청에는 없다', () => {
+void test('내 신청: 대기·승인만 위 띠에 보이고, 대기는 취소, 승인은 프로젝트 열기. 지난 신청은 접어 둔다', () => {
   const html = renderToString(
     createElement(MyRequests, {
       busy: false,
@@ -33,14 +35,100 @@ void test('공개 카드가 없어도 대기 중인 내 신청에는 취소 버�
         { requestId: 'jr_1', projectId: 'p_hidden', title: '비공개로 바뀐 팀', status: 'pending', createdAt: at },
         { requestId: 'jr_2', projectId: 'p_ok', title: '승인된 팀', status: 'approved', createdAt: at },
         { requestId: 'jr_3', projectId: 'p_no', title: '거절된 팀', status: 'rejected', createdAt: at },
+        { requestId: 'jr_4', projectId: 'p_old', title: '마감된 팀', status: 'expired', createdAt: at },
       ],
     }),
   );
-  const rows = html.split('<li>').slice(1);
-  assert.equal(rows.length, 3);
-  assert.match(rows[0], /비공개로 바뀐 팀[\s\S]*팀장 확인 대기[\s\S]*<button[^>]*>신청 취소<\/button>/);
-  assert.doesNotMatch(rows[1] + rows[2], /신청 취소/);
-  assert.match(html, /href="\/workspace\?project=p_ok"/);
+  const [now, past] = html.split('<details');
+  assert.match(now, /확인 대기[\s\S]*비공개로 바뀐 팀[\s\S]*<button[^>]*>신청 취소<\/button>/);
+  assert.match(now, /승인된 팀[\s\S]*href="\/app\?tab=work&amp;project=p_ok"[^>]*>프로젝트 열기/);
+  assert.doesNotMatch(now, /거절된 팀|마감된 팀/);
+  assert.match(past, /지난 신청 2/);
+  assert.match(past, /거절됨[\s\S]*거절된 팀/);
+  assert.doesNotMatch(past, /신청 취소/);
+  // 지난 신청만 있으면 띠 없이 접힌 목록만.
+  const only = renderToString(
+    createElement(MyRequests, { busy: false, onCancel: () => {}, requests: [{ requestId: 'jr_3', projectId: 'p_no', title: '거절된 팀', status: 'rejected', createdAt: at }] }),
+  );
+  assert.match(only, /지난 신청 1/);
+  assert.equal(renderToString(createElement(MyRequests, { busy: false, onCancel: () => {}, requests: [] })), '');
+});
+
+const team = (over = {}) => ({
+  projectId: 'p_a',
+  title: '스터디 출석 봇',
+  goal: '디스코드 스터디 출석을 기록하고 주간 요약을 보내는 봇을 만든다.',
+  scope: '출석 명령어, 주간 요약',
+  completionCriteria: '실제 서버에서 7일 출석을 기록한다',
+  skills: ['python', 'api'],
+  lifecycle: 'active',
+  goalVersion: 2,
+  members: 3,
+  maxMembers: 4,
+  startedAt: '2026-11-16T05:00:00.000Z',
+  deadlineAt: '2026-11-23T05:00:00.000Z',
+  joinUntil: '2026-11-17T05:00:00.000Z',
+  joinable: true,
+  requested: false,
+  ...over,
+});
+const now = Date.parse('2026-11-17T02:20:00.000Z'); // 시작 21시간 20분 뒤, 신청 마감 2시간 40분 전
+
+void test('팀 카드: 상태·DAY·인원 점·기술 태그·남은 신청 시간(3시간 미만은 강조)·자세히 보고 신청', () => {
+  const html = renderToString(createElement(TeamCard, { team: team(), now, busy: false, restricted: false, onOpen: () => {} }));
+  assert.match(html, /진행 중 · DAY 1/);
+  assert.match(html, /3\/4/);
+  assert.equal(html.match(/class="seat on"/g)?.length, 3);
+  assert.equal(html.match(/class="seat"/g)?.length, 1);
+  assert.match(html, /Python/);
+  assert.match(html, /신청 마감 2시간 40분/);
+  assert.match(html, /class="team-time urgent"/);
+  assert.match(html, />자세히 보고 신청</);
+  assert.doesNotMatch(html, /실제 서버에서 7일/, '완료 기준 전문은 패널에서 읽는다');
+  const draft = renderToString(
+    createElement(TeamCard, { team: team({ lifecycle: 'draft', startedAt: null, deadlineAt: null, joinUntil: null, skills: [] }), now, busy: false, restricted: false, onOpen: () => {} }),
+  );
+  assert.match(draft, /준비 중/);
+  assert.match(draft, /시작하면 7일/);
+  assert.match(draft, /직접 만든 팀/);
+  const full = renderToString(createElement(TeamCard, { team: team({ members: 4, joinable: false }), now, busy: false, restricted: false, onOpen: () => {} }));
+  assert.match(full, /<button[^>]*disabled=""[^>]*>인원 마감/);
+  const asked = renderToString(createElement(TeamCard, { team: team({ requested: true, joinable: false }), now, busy: false, restricted: false, onOpen: () => {} }));
+  assert.match(asked, /<button[^>]*disabled=""[^>]*>신청함 · 확인 대기/);
+});
+
+void test('신청 패널: 목표 버전·기능 범위·완료 기준 전문, 확인 체크 전에는 보내기가 꺼지고, 제한 중이면 꺼진다', () => {
+  const props = { team: team(), now, agreed: false, busy: false, restricted: false, onAgree: () => {}, onSubmit: () => {}, onClose: () => {} };
+  const html = renderToString(createElement(TeamPanel, props));
+  assert.match(html, /목표 v2/);
+  assert.match(html, /출석 명령어, 주간 요약/);
+  assert.match(html, /실제 서버에서 7일 출석을 기록한다/);
+  assert.match(html, /<button[^>]*disabled=""[^>]*>참여 신청 보내기/);
+  const ready = renderToString(createElement(TeamPanel, { ...props, agreed: true }));
+  assert.doesNotMatch(ready, /<button[^>]*disabled=""[^>]*>참여 신청 보내기/);
+  // 템플릿 팀은 완료 기준 문장이 없다. 빈 칸 대신 업무 완료 규칙을 알린다.
+  const tmpl = renderToString(createElement(TeamPanel, { ...props, team: team({ completionCriteria: '' }) }));
+  assert.match(tmpl, /모든 업무를 완료하고 근거를 남기면/);
+  const blocked = renderToString(createElement(TeamPanel, { ...props, agreed: true, restricted: true }));
+  assert.match(blocked, /<button[^>]*disabled=""[^>]*>참여 신청 보내기/);
+});
+
+void test('필터: 상태 칩과 자리 있는 팀만. 꽉 찼거나 신청할 수 없는 팀은 맨 뒤로', () => {
+  const list = [
+    team({ projectId: 'full', members: 4, joinable: false }),
+    team({ projectId: 'draft', lifecycle: 'draft' }),
+    team({ projectId: 'live' }),
+  ];
+  assert.deepEqual(visibleTeams(list, 'all', false).map((t) => t.projectId), ['draft', 'live', 'full']);
+  assert.deepEqual(visibleTeams(list, 'draft', false).map((t) => t.projectId), ['draft']);
+  assert.deepEqual(visibleTeams(list, 'active', true).map((t) => t.projectId), ['live']);
+});
+
+void test('홈 카드 버튼: 내 팀은 열기, 신청 창이 열렸고 자리가 있으면 신청, 아니면 마감', () => {
+  assert.equal(homeTeamAction({ joined: true, join_open: false, members: 4 }), 'open');
+  assert.equal(homeTeamAction({ joined: false, join_open: true, members: 2 }), 'apply');
+  assert.equal(homeTeamAction({ joined: false, join_open: true, members: 4 }), 'full');
+  assert.equal(homeTeamAction({ joined: false, join_open: false, members: 2 }), 'closed');
 });
 
 void test('금지 중이면 팀 찾기에 언제까지 참여 신청할 수 없는지 알린다', () => {
