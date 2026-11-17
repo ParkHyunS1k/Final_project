@@ -97,11 +97,10 @@ export function MySummary({
         </div>
         <div className="my-grade">
           <b>{grade}</b>
-          <span>프로필 등급</span>
+          <span>{`상위 ${p?.percentile ?? '-'}%`}</span>
         </div>
       </div>
       <div className="my-standing">
-        {p?.percentile != null && <span className="my-top">{`상위 ${p.percentile}%`}</span>}
         <span className="my-meta">{p ? basisLabel(p.computedAt) : '매일 새벽에 계산돼요'}</span>
         <button type="button" className="icon-btn my-share-btn" onClick={onShare} aria-label="내 프로필 공유" title="내 프로필 공유">
           <Share2 size={18} />

@@ -1196,8 +1196,10 @@
   color: var(--heat-700);
 }
 .my-grade span {
-  font-size: 11px;
-  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--heat-700);
+  white-space: nowrap;
 }
 .my-stats {
   display: grid;
@@ -1456,10 +1458,6 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-}
-.my-top {
-  font-weight: 800;
-  color: var(--heat-700);
 }
 .my-standing .my-share-btn {
   margin-left: auto;
