@@ -18,7 +18,8 @@ function sameSecret(a: string, b: string) {
 
 export async function GET(request: Request) {
   const secret = (process.env.CRON_SECRET ?? '').trim();
-  const presented = (request.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
+  // Authorization: Bearer <비밀값> 형식만 받는다.
+  const presented = /^Bearer\s+(.+)$/i.exec(request.headers.get('authorization') ?? '')?.[1] ?? '';
   if (!secret || !sameSecret(secret, presented)) return reply({ error: 'not authorized' }, 401);
   try {
     return reply(await refreshAllProfileScores(new Date()));

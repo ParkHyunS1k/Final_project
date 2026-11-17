@@ -10,7 +10,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-const { one, run } = await setupTestDb();
+const { one, rows, run, exec } = await setupTestDb();
 const outfile = join(mkdtempSync(join(tmpdir(), 'projectmate-profile-test-')), 'route.mjs');
 await build({
   stdin: {
@@ -238,4 +238,72 @@ test('카드 이미지: 꺼졌거나 없는 아이디는 404', async () => {
   const res = await card('card-off');
   assert.equal(res.status, 404);
   assert.equal(res.headers.get('cache-control'), 'no-store');
+});
+
+test('리뷰: 일괄 계산이 중간에 실패하면 아무 점수도 바뀌지 않는다', async () => {
+  await gradedTeam('batch1', ['batch2', 'batch3'], '일괄 계산 팀');
+  assert.equal((await cron()).status, 200);
+  const before = await rows('SELECT user_id, computed_at FROM profile_scores ORDER BY user_id');
+  const last = before.at(-1).user_id;
+  // 첫 쓰기 직전에 마지막 사용자의 저장만 실패하게 만든다.
+  globalThis.__BEFORE_WRITE_SQL = 'INSERT INTO profile_scores';
+  globalThis.__BEFORE_WRITE = () => exec(`ALTER TABLE profile_scores ADD CONSTRAINT fail_last CHECK (user_id <> '${last}') NOT VALID`);
+  try {
+    assert.equal((await cron()).status, 503);
+  } finally {
+    await exec('ALTER TABLE profile_scores DROP CONSTRAINT IF EXISTS fail_last');
+  }
+  const after = await rows('SELECT user_id, computed_at FROM profile_scores ORDER BY user_id');
+  assert.deepEqual(after.map((r) => +r.computed_at), before.map((r) => +r.computed_at));
+});
+
+test('리뷰: 같은 version 동시 저장에서 진 요청은 기록을 남기지 않는다', async () => {
+  const RealDate = Date;
+  const T = RealDate.parse('2026-11-17T10:00:00.000Z');
+  // 두 요청이 같은 밀리초에 저장하는 상황을 만든다.
+  globalThis.Date = class extends RealDate {
+    constructor(...a) {
+      super(...(a.length ? a : [T]));
+    }
+    static now() {
+      return T;
+    }
+  };
+  try {
+    globalThis.__BEFORE_WRITE_SQL = 'public_profiles';
+    globalThis.__BEFORE_WRITE = () => save('racer', { version: 0, handle: 'racer-b', displayName: '경쟁 B' });
+    const lost = await save('racer', { version: 0, handle: 'racer-a', displayName: '경쟁 A' }, 409);
+    assert.match(lost.error, /다른 곳에서 바뀌었어요/);
+  } finally {
+    globalThis.Date = RealDate;
+  }
+  const events = await rows("SELECT detail FROM public_profile_events WHERE user_id='racer'");
+  assert.equal(events.length, 1);
+  assert.equal(events[0].detail.after.handle, 'racer-b');
+});
+
+test('리뷰: 다른 사람이 같은 아이디를 먼저 저장하면 503이 아니라 409', async () => {
+  globalThis.__BEFORE_WRITE_SQL = 'public_profiles';
+  globalThis.__BEFORE_WRITE = () =>
+    run("INSERT INTO public_profiles(user_id,handle,display_name,updated_at) VALUES('sniper','same-id','먼저',now())");
+  const res = await save('slow', { version: 0, handle: 'same-id', displayName: '늦게' }, 409);
+  assert.match(res.error, /이미 쓰는 아이디/);
+});
+
+test('리뷰: 기록에는 바뀐 항목의 전후 값이 남는다(근거 공개 포함)', async () => {
+  const { experiences } = await soloWithExperiences('auditor');
+  const a = await save('auditor', { version: 0, handle: 'auditor', displayName: '기록' });
+  await save('auditor', { ...a.settings, shownEvidence: [experiences[0].id] });
+  const last = await one("SELECT action, detail FROM public_profile_events WHERE user_id='auditor' ORDER BY created_at DESC, id DESC LIMIT 1");
+  assert.equal(last.action, 'update');
+  assert.deepEqual(last.detail.before, { shownEvidence: [] });
+  assert.deepEqual(last.detail.after, { shownEvidence: [experiences[0].id] });
+  assert.equal(last.detail.version, 2);
+});
+
+test('리뷰: 이상한 주소(%)는 오류 없이 404, cron은 Bearer 형식만', async () => {
+  const card = await api.cardGET(new Request('https://test.local/u/%25/card'), { params: Promise.resolve({ handle: '%' }) });
+  assert.equal(card.status, 404);
+  const plain = await api.cronGET(new Request('https://test.local/api/internal/profile-scores', { headers: { authorization: 'test-cron' } }));
+  assert.equal(plain.status, 401);
 });

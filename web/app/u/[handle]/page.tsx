@@ -8,7 +8,7 @@ import '../u.css';
 export const dynamic = 'force-dynamic';
 
 // 메타데이터와 화면이 같은 요청에서 한 번만 읽는다.
-const load = cache((handle: string) => readPublicProfile(decodeURIComponent(handle)));
+const load = cache((handle: string) => readPublicProfile(handle));
 
 type Props = { params: Promise<{ handle: string }> };
 

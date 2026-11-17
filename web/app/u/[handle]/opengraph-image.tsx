@@ -11,7 +11,7 @@ export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
 export default async function Image({ params }: { params: Promise<{ handle: string }> }) {
-  const profile = await readPublicProfile(decodeURIComponent((await params).handle));
+  const profile = await readPublicProfile((await params).handle);
   if (!profile) return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
   const host = (await headers()).get('host') ?? '';
   return new ImageResponse(<ProfileCard profile={profile} size="og" host={host} />, {

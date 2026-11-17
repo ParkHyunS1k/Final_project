@@ -28,18 +28,21 @@ export async function refreshAllProfileScores(now = new Date()) {
   const users = await db
     .prepare('SELECT DISTINCT user_id FROM project_members ORDER BY user_id')
     .all<{ user_id: string }>();
+  // 먼저 모두 계산하고, 한 트랜잭션으로 한꺼번에 저장한다. 중간에 실패하면 아무것도 바뀌지 않는다.
   // ponytail: 사용자별 순차 계산. 사용자가 많아져 시간이 모자라면 묶음 병렬로 바꾼다.
+  const writes = [];
   for (const { user_id } of users.results) {
-    const summary = await scoreSummary(user_id, now);
-    const score = profileScore(summary.history);
-    await db
-      .prepare(
-        `INSERT INTO profile_scores(user_id,score,grade,formula_version,computed_at) VALUES(?,?,?,?,?)
+    const score = profileScore((await scoreSummary(user_id, now)).history);
+    writes.push(
+      db
+        .prepare(
+          `INSERT INTO profile_scores(user_id,score,grade,formula_version,computed_at) VALUES(?,?,?,?,?)
          ON CONFLICT(user_id) DO UPDATE SET score=excluded.score,grade=excluded.grade,formula_version=excluded.formula_version,computed_at=excluded.computed_at`,
-      )
-      .bind(user_id, score, profileGrade(score), PROFILE_FORMULA, now.toISOString())
-      .run();
+        )
+        .bind(user_id, score, profileGrade(score), PROFILE_FORMULA, now.toISOString()),
+    );
   }
+  if (writes.length) await db.batch(writes);
   return { users: users.results.length };
 }
 
@@ -190,29 +193,33 @@ export async function saveProfileSettings(user: Identity, b: Record<string, unkn
     JSON.stringify(next.shownEvidence),
     now,
   ];
+  // 바뀐 항목의 전후 값(근거 공개 변경도 설명할 수 있게). 새로 만들면 전부 '후'에 둔다.
+  const prev: Partial<ProfileSettings> = old ? toSettings(old) : {};
+  const keys = (Object.keys(next) as (keyof typeof next)[]).filter(
+    (k) => JSON.stringify(prev[k]) !== JSON.stringify(next[k]),
+  );
+  const detail = {
+    version: version + 1,
+    before: Object.fromEntries(keys.filter((k) => k in prev).map((k) => [k, prev[k]])),
+    after: Object.fromEntries(keys.map((k) => [k, next[k]])),
+  };
+  // 쓰기와 기록을 한 문장으로: 실제로 바뀐 행이 있을 때만(RETURNING) 기록이 생긴다.
   const write = old
-    ? db
-        .prepare(
-          'UPDATE public_profiles SET handle=?,display_name=?,enabled=?,show_github=?,hidden_projects=?::jsonb,hidden_experiences=?::jsonb,shown_evidence=?::jsonb,updated_at=?,version=version+1 WHERE user_id=? AND version=?',
-        )
-        .bind(...values, user.id, version)
-    : db
-        .prepare(
-          'INSERT INTO public_profiles(handle,display_name,enabled,show_github,hidden_projects,hidden_experiences,shown_evidence,updated_at,user_id,version) VALUES(?,?,?,?,?::jsonb,?::jsonb,?::jsonb,?,?,1) ON CONFLICT(user_id) DO NOTHING',
-        )
-        .bind(...values, user.id);
-  // 기록은 이번 쓰기가 실제로 반영됐을 때만 남는다(같은 version·시각을 다시 확인).
-  const log = db
-    .prepare(
-      `INSERT INTO public_profile_events(id,user_id,action,detail) SELECT ?,?,?,?::jsonb WHERE EXISTS(SELECT 1 FROM public_profiles WHERE user_id=? AND version=? AND updated_at=?)`,
-    )
-    .bind('ppe_' + crypto.randomUUID(), user.id, action, JSON.stringify({ handle: next.handle, enabled: next.enabled }), user.id, version + 1, now);
+    ? `UPDATE public_profiles SET handle=?,display_name=?,enabled=?,show_github=?,hidden_projects=?::jsonb,hidden_experiences=?::jsonb,shown_evidence=?::jsonb,updated_at=?,version=version+1 WHERE user_id=? AND version=? RETURNING user_id`
+    : `INSERT INTO public_profiles(handle,display_name,enabled,show_github,hidden_projects,hidden_experiences,shown_evidence,updated_at,user_id,version) VALUES(?,?,?,?,?::jsonb,?::jsonb,?::jsonb,?,?,1) ON CONFLICT(user_id) DO NOTHING RETURNING user_id`;
   let changed: number;
   try {
-    const [result] = await db.batch([write, log]);
+    const result = await db
+      .prepare(
+        `WITH w AS (${write}) INSERT INTO public_profile_events(id,user_id,action,detail) SELECT ?,user_id,?,?::jsonb FROM w`,
+      )
+      .bind(...values, user.id, ...(old ? [version] : []), 'ppe_' + crypto.randomUUID(), action, JSON.stringify(detail))
+      .run();
     changed = result.meta.changes;
   } catch (e) {
-    if ((e as { code?: string }).code === '23505') throw new PolicyError('이미 쓰는 아이디예요.', 409);
+    // DB 계층이 오류를 감싸므로 원인의 SQLSTATE를 본다(23505: 아이디 중복).
+    const code = (e as { code?: string }).code ?? (e as { cause?: { code?: string } }).cause?.code;
+    if (code === '23505') throw new PolicyError('이미 쓰는 아이디예요.', 409);
     throw e;
   }
   if (changed !== 1) throw new Conflict('다른 곳에서 바뀌었어요. 다시 불러와 주세요.');
