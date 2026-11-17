@@ -538,7 +538,7 @@ export function PublicProfileSettings({
         <label className="my-check">
           <input type="checkbox" checked={showGithub && Boolean(data.github)} disabled={!data.github} onChange={(e) => setShowGithub(e.target.checked)} />
           GitHub 아이디 보이기
-          <span className="my-meta">{data.github ? `@${data.github}` : '연결된 GitHub이 없어요. 아래에서 연결할 수 있어요.'}</span>
+          <span className="my-meta">{data.github ? `@${data.github}` : '연결된 GitHub이 없어요. 위 GitHub 카드에서 연결할 수 있어요.'}</span>
         </label>
         {!!data.projects.length && (
           <div className="my-pick">

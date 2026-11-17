@@ -232,6 +232,8 @@ void test('공개 프로필 설정: 켜기·아이디·이름, GitHub 미연결�
   assert.match(html, /value="하린"/);
   assert.match(html, /\/u\//);
   assert.match(html, /<input[^>]*type="checkbox"[^>]*disabled=""[^>]*>[^<]*GitHub 아이디 보이기|GitHub 아이디 보이기[\s\S]*연결된 GitHub이 없어요/);
+  // GitHub 연결 카드는 이 양식 위에 있다.
+  assert.match(html, /위 GitHub 카드에서 연결할 수 있어요/);
   assert.match(html, /동네 가게 예약 페이지/);
   assert.match(html, /예약 API[\s\S]*완료 근거 보이기/);
   const err = renderToString(createElement(PublicProfileSettings, { data, busy: false, error: '이미 쓰는 아이디예요.', onSave: async () => {} }));
