@@ -283,6 +283,9 @@ test('완주한 팀: 기간 중 1회 제출, 익명 평균은 공개 뒤에만, 
   assert.equal(row.grade, 'A');
   assert.ok(Date.parse(row.startedAt) && Date.parse(row.deadlineAt));
   assert.equal((await me('m1')).history.find((p) => p.id === projectId).grade, 'S');
+  assert.equal(row.left, false);
+  // 참여 중단한 프로젝트는 표시하되 중단으로 알린다(개인 완주 수에서 뺀다).
+  assert.equal((await me('m3')).history.find((p) => p.id === projectId).left, true);
 });
 
 test('계정 분리: 비멤버·비로그인·프로젝트 미지정', async () => {

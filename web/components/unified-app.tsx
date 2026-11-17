@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useCallback, useEffect, useState, type SubmitEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type SubmitEvent } from 'react';
 import {
   ArrowRight,
   House,
@@ -85,9 +85,11 @@ function tabFrom(value: string): Tab {
   return Object.hasOwn(TITLES, value) ? (value as Tab) : 'home';
 }
 type MyData = {
-  score: MyScore;
-  restriction: RestrictionView | null;
-  pendingRequests: number;
+  /** 불러오지 못한 항목은 null(점수·신청 수) 또는 undefined(제한)로 둔다. 없음과 구분한다. */
+  score: MyScore | null;
+  restriction: RestrictionView | null | undefined;
+  pendingRequests: number | null;
+  failed: boolean;
 };
 type CareerData = {
   experiences: Parameters<typeof ExperienceBoard>[0]['experiences'];
@@ -100,16 +102,21 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   return body as T;
 }
 async function loadMy(signal?: AbortSignal): Promise<MyData> {
-  const [score, projects, teams] = await Promise.all([
+  // 하나가 실패해도 나머지는 보인다.
+  const [score, projects, teams] = await Promise.allSettled([
     getJson<MyScore>('/api/score/me', signal),
     getJson<{ restriction: RestrictionView | null }>('/api/projects', signal),
     getJson<{ requests: { status: string }[] }>('/api/teams', signal),
   ]);
   return {
-    score,
-    restriction: projects.restriction,
-    pendingRequests: teams.requests.filter((r) => r.status === 'pending')
-      .length,
+    score: score.status === 'fulfilled' ? score.value : null,
+    restriction:
+      projects.status === 'fulfilled' ? projects.value.restriction : undefined,
+    pendingRequests:
+      teams.status === 'fulfilled'
+        ? teams.value.requests.filter((r) => r.status === 'pending').length
+        : null,
+    failed: [score, projects, teams].some((r) => r.status === 'rejected'),
   };
 }
 const loadCareer = (signal?: AbortSignal) =>
@@ -261,29 +268,47 @@ export function UnifiedApp({
   const [jobSearchError, setJobSearchError] = useState('');
   // 마이페이지: 점수·제한·신청 대기(요약·활동·설정)와 경험(경험·포트폴리오).
   const [my, setMy] = useState<MyData | null>(null);
+  const [myRetry, setMyRetry] = useState(0);
   const [career, setCareer] = useState<CareerData | null>(null);
+  const [careerError, setCareerError] = useState('');
+  const [careerRetry, setCareerRetry] = useState(0);
+  // 늦게 도착한 예전 경험 응답이 저장 뒤 재조회 결과를 덮지 않도록 마지막 요청만 반영한다.
+  const careerSeq = useRef(0);
   const [expFilter, setExpFilter] = useState<ExperienceFilter>('all');
   const personal = PERSONAL.includes(tab);
+  // 마이페이지에 들어올 때 한 번 부르고, 마이페이지 안의 탭 이동에서는 다시 부르지 않는다.
   useEffect(() => {
     if (!personal) return;
     const c = new AbortController();
-    loadMy(c.signal)
-      .then(setMy)
-      .catch(() => {
-        /* 요약은 보조 정보다. 실패하면 E·0으로 보이고 다음 이동 때 다시 부른다. */
-      });
+    void loadMy(c.signal).then((value) => {
+      if (!c.signal.aborted) setMy(value);
+    });
     return () => c.abort();
-  }, [personal, tab]);
+  }, [personal, myRetry]);
+  async function reloadCareer(signal?: AbortSignal) {
+    const n = ++careerSeq.current;
+    const value = await loadCareer(signal);
+    if (n === careerSeq.current) {
+      setCareer(value);
+      setCareerError('');
+    }
+  }
   useEffect(() => {
     if (tab !== 'portfolio') return;
     const c = new AbortController();
+    const n = ++careerSeq.current;
     loadCareer(c.signal)
-      .then(setCareer)
+      .then((value) => {
+        if (n !== careerSeq.current) return;
+        setCareer(value);
+        setCareerError('');
+      })
       .catch((e) => {
-        if (!c.signal.aborted) setError(e.message);
+        if (!c.signal.aborted && n === careerSeq.current)
+          setCareerError(e.message);
       });
     return () => c.abort();
-  }, [tab]);
+  }, [tab, careerRetry]);
   const refresh = useCallback(async () => setData(await request<Hub>()), []);
   useEffect(() => {
     const controller = new AbortController();
@@ -1213,8 +1238,10 @@ export function UnifiedApp({
           {tab === 'activity' && (
             <ActivityPanel
               score={my?.score ?? null}
+              failed={Boolean(my?.failed && !my.score)}
+              onRetry={() => setMyRetry((n) => n + 1)}
               dates={data?.stats.dates ?? []}
-              pendingRequests={my?.pendingRequests ?? 0}
+              pendingRequests={my ? my.pendingRequests : 0}
               jobs={jobs.length}
               now={new Date()}
               onOpenProject={(id) => navigate('work', id)}
@@ -1225,7 +1252,8 @@ export function UnifiedApp({
           {tab === 'settings' && (
             <SettingsPanel
               name={data?.name ?? ''}
-              restriction={my?.restriction ?? null}
+              restriction={my ? my.restriction : null}
+              loading={!my}
               busy={busy}
               onSignOut={() => void act(signOut)}
             />
@@ -1263,9 +1291,24 @@ export function UnifiedApp({
               {record.id &&
                 recordKind === 'portfolio' &&
                 recordForm('portfolio')}
+              {!career && careerError && (
+                <div className="hub-alert" role="alert">
+                  <p>{careerError}</p>
+                  <button
+                    className="btn"
+                    onClick={() => setCareerRetry((n) => n + 1)}
+                  >
+                    다시 불러오기
+                  </button>
+                </div>
+              )}
+              {!career && !careerError && (
+                <output className="hub-empty">경험을 불러오는 중입니다.</output>
+              )}
+              {career && (
               <ExperienceBoard
-                experiences={career?.experiences ?? []}
-                pending={career?.pending ?? []}
+                experiences={career.experiences}
+                pending={career.pending}
                 portfolios={portfolios}
                 filter={expFilter}
                 busy={busy}
@@ -1288,7 +1331,7 @@ export function UnifiedApp({
                       throw new Error(
                         result.error || '경험을 저장하지 못했습니다.',
                       );
-                    setCareer(await loadCareer());
+                    await reloadCareer();
                     setNotice(
                       '본인이 확인한 경험과 이력서 문장 초안을 저장했습니다.',
                     );
@@ -1312,6 +1355,7 @@ export function UnifiedApp({
                 }}
                 onAdd={() => newRecord('portfolio')}
               />
+              )}
             </>
           )}
           {tab === 'jobs' && (

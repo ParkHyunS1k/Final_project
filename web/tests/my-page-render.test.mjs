@@ -42,6 +42,7 @@ const score = {
     { id: 'p_run', title: '매일 공부 체크인', role: 'owner', lifecycle: 'active', startedAt: '2026-11-10T03:00:00Z', deadlineAt: '2026-11-17T03:00:00Z', score: null, grade: null },
     { id: 'p_done', title: '피드백 서비스', role: 'member', lifecycle: 'completed', startedAt: '2026-11-01T03:00:00Z', deadlineAt: '2026-11-08T03:00:00Z', score: 4.4, grade: 'A' },
     { id: 'p_end', title: '팀 위키', role: 'member', lifecycle: 'expired', startedAt: '2026-10-05T03:00:00Z', deadlineAt: '2026-10-12T03:00:00Z', score: null, grade: null },
+    { id: 'p_left', title: '중간에 나온 팀', role: 'member', lifecycle: 'completed', startedAt: '2026-09-01T03:00:00Z', deadlineAt: '2026-09-08T03:00:00Z', score: null, grade: null, left: true },
   ],
 };
 
@@ -98,12 +99,33 @@ void test('활동: 프로젝트 기록(내 등급), 뱃지(받은 수), 참여 �
   assert.match(html, /매일 공부 체크인[\s\S]*팀장[\s\S]*진행 중 · DAY 7/);
   assert.match(html, /피드백 서비스[\s\S]*팀원[\s\S]*완주 · A/);
   assert.match(html, /팀 위키[\s\S]*기한 종료/);
+  assert.match(html, /중간에 나온 팀[\s\S]*참여 중단/);
   assert.match(html, /뱃지 1 \/ 2/);
   assert.match(html, /7일 완주[\s\S]*×2/);
   assert.match(html, /class="my-badge off"[^>]*>[\s\S]*소통왕/);
   assert.match(html, /확인 대기 2/);
   assert.match(html, /관심 공고[\s\S]*3개/);
   assert.match(html, /최근 12주 중 1일 학습/);
+});
+
+void test('활동: 불러오지 못하면 로딩이 아니라 실패와 다시 불러오기', () => {
+  const html = renderToString(
+    createElement(ActivityPanel, {
+      score: null,
+      failed: true,
+      dates: [],
+      pendingRequests: null,
+      jobs: 0,
+      now,
+      onOpenProject: () => {},
+      onTeams: () => {},
+      onJobs: () => {},
+      onRetry: () => {},
+    }),
+  );
+  assert.match(html, /기록을 불러오지 못했어요[\s\S]*<button[^>]*>다시 불러오기<\/button>/);
+  assert.doesNotMatch(html, /불러오는 중/);
+  assert.doesNotMatch(html, /대기 없음/, '신청 수를 모르면 없다고 하지 않는다');
 });
 
 void test('활동: 프로젝트가 없으면 찾으러 가는 안내', () => {
@@ -139,6 +161,10 @@ void test('설정: 제한이 없으면 정상, 있으면 해제 시각과 막힌
   );
   assert.match(blocked, /동료평가를 내지 않아 11월 24일 12:00까지 프로젝트 만들기·참여 신청·초대 수락·시작을 할 수 없습니다/);
   assert.match(blocked, /제한 중/);
+  // 제한 여부를 불러오지 못하면 '정상'이라고 하지 않는다.
+  const unknown = renderToString(createElement(SettingsPanel, { name: '지원자', restriction: undefined, busy: false, onSignOut: () => {} }));
+  assert.doesNotMatch(unknown, /정상|제한 없음/);
+  assert.match(unknown, /확인하지 못했어요/);
 });
 
 void test('경험·포트폴리오: 프로젝트 경험과 직접 추가 자료를 한 목록에, 가져올 업무는 위에, 출처 필터', () => {

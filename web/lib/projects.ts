@@ -120,7 +120,7 @@ export async function listProjects(user: Identity) {
   await adoptLegacy(user);
   const result = await database()
     .prepare(
-      'SELECT s.owner AS id,s.title,s.revision,m.role,p.lifecycle,p.started_at,p.deadline_at,p.duration_days FROM sprints s JOIN project_members m ON m.project_id=s.owner LEFT JOIN project_policy p ON p.project_id=s.owner WHERE m.user_id=? ORDER BY s.updated_at DESC,s.owner',
+      'SELECT s.owner AS id,s.title,s.revision,m.role,m.left_at,p.lifecycle,p.started_at,p.deadline_at,p.duration_days FROM sprints s JOIN project_members m ON m.project_id=s.owner LEFT JOIN project_policy p ON p.project_id=s.owner WHERE m.user_id=? ORDER BY s.updated_at DESC,s.owner',
     )
     .bind(user.id)
     .all<{
@@ -128,6 +128,7 @@ export async function listProjects(user: Identity) {
       title: string;
       revision: number;
       role: string;
+      left_at: Date | null;
       lifecycle: string | null;
       started_at: Date | null;
       deadline_at: Date | null;

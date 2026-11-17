@@ -18,6 +18,8 @@ export type HistoryRow = {
   deadlineAt: string | null;
   score: number | null;
   grade: Grade | null;
+  /** 참여를 중단한 프로젝트. */
+  left?: boolean;
 };
 export type MyScore = {
   bestGrade: Grade | 'E';
@@ -63,6 +65,7 @@ export function studyCalendar(dates: string[], now: Date, weeks = 12) {
 }
 
 export function stateLabel(p: Pick<HistoryRow, 'lifecycle' | 'startedAt'> & Partial<HistoryRow>, now: Date) {
+  if (p.left) return '참여 중단';
   if (p.lifecycle === 'active' && p.startedAt) {
     const days = p.deadlineAt ? Math.round((Date.parse(p.deadlineAt) - Date.parse(p.startedAt)) / DAY_MS) : 7;
     return `진행 중 · DAY ${sprintDay(p.startedAt, now.getTime(), days)}`;
@@ -81,7 +84,7 @@ export function MySummary({
   score: MyScore | null;
   stats: { streak: number; days: number };
 }) {
-  const finished = score?.history.filter((p) => p.lifecycle === 'completed').length ?? 0;
+  const finished = score?.history.filter((p) => p.lifecycle === 'completed' && !p.left).length ?? 0;
   return (
     <section className="my-summary" aria-label="내 요약">
       <div className="my-me">
@@ -121,6 +124,7 @@ export function MySummary({
 
 export function ActivityPanel({
   score,
+  failed = false,
   dates,
   pendingRequests,
   jobs,
@@ -128,15 +132,20 @@ export function ActivityPanel({
   onOpenProject,
   onTeams,
   onJobs,
+  onRetry,
 }: {
   score: MyScore | null;
+  /** 점수·기록 조회가 실패했다(로딩 중과 구분). */
+  failed?: boolean;
   dates: string[];
-  pendingRequests: number;
+  /** 모르면 null. */
+  pendingRequests: number | null;
   jobs: number;
   now: Date;
   onOpenProject: (id: string) => void;
   onTeams: () => void;
   onJobs: () => void;
+  onRetry?: () => void;
 }) {
   const cells = studyCalendar(dates, now);
   const studied = cells.filter((c) => c.on).length;
@@ -145,7 +154,14 @@ export function ActivityPanel({
     <div className="my-activity">
       <section className="hub-card my-projects">
         <h3>내 프로젝트 기록</h3>
-        {!score ? (
+        {!score && failed ? (
+          <div className="hub-empty" role="alert">
+            <p>기록을 불러오지 못했어요.</p>
+            <button className="btn" onClick={onRetry}>
+              다시 불러오기
+            </button>
+          </div>
+        ) : !score ? (
           <p className="hub-empty">기록을 불러오는 중입니다.</p>
         ) : score.history.length ? (
           <ul>
@@ -158,8 +174,8 @@ export function ActivityPanel({
                       .filter(Boolean)
                       .join(' · ')}
                   </span>
-                  <span className={'pill' + (p.lifecycle === 'completed' ? ' green' : p.lifecycle === 'active' ? ' orange' : '')}>
-                    {stateLabel(p, now) + (p.grade ? ` · ${p.grade}` : '')}
+                  <span className={'pill' + (p.left ? '' : p.lifecycle === 'completed' ? ' green' : p.lifecycle === 'active' ? ' orange' : '')}>
+                    {stateLabel(p, now) + (p.grade && !p.left ? ` · ${p.grade}` : '')}
                   </span>
                 </button>
               </li>
@@ -202,7 +218,7 @@ export function ActivityPanel({
           <button type="button" onClick={onTeams}>
             <span>참여 신청</span>
             <span className={'pill' + (pendingRequests ? ' orange' : '')}>
-              {pendingRequests ? `확인 대기 ${pendingRequests}` : '대기 없음'}
+              {pendingRequests === null ? '확인 못 함' : pendingRequests ? `확인 대기 ${pendingRequests}` : '대기 없음'}
             </span>
           </button>
           <button type="button" onClick={onJobs}>
@@ -338,11 +354,15 @@ export function ExperienceBoard({
 export function SettingsPanel({
   name,
   restriction,
+  loading = false,
   busy,
   onSignOut,
 }: {
   name: string;
-  restriction: RestrictionView | null;
+  /** null은 제한 없음, undefined는 불러오지 못함. */
+  restriction: RestrictionView | null | undefined;
+  /** 아직 불러오는 중이면 제한 여부를 말하지 않는다. */
+  loading?: boolean;
   busy: boolean;
   onSignOut: () => void;
 }) {
@@ -360,12 +380,18 @@ export function SettingsPanel({
           <div>
             <b>참여 제한</b>
             <p>
-              {restriction
-                ? restrictionMessage(restriction, '프로젝트 만들기·참여 신청·초대 수락·시작을 할')
-                : '제한 없음. 끝난 프로젝트의 동료평가를 24시간 안에 내지 않으면 7일 → 30일 → 영구로 제한돼요.'}
+              {loading
+                ? '제한 여부를 확인하고 있어요.'
+                : restriction === undefined
+                ? '제한 여부를 불러오지 못했어요. 잠시 후 다시 열어 주세요.'
+                : restriction
+                  ? restrictionMessage(restriction, '프로젝트 만들기·참여 신청·초대 수락·시작을 할')
+                  : '제한 없음. 끝난 프로젝트의 동료평가를 24시간 안에 내지 않으면 7일 → 30일 → 영구로 제한돼요.'}
             </p>
           </div>
-          <span className={'pill' + (restriction ? ' orange' : ' my-ok')}>{restriction ? '제한 중' : '정상'}</span>
+          <span className={'pill' + (loading || restriction === undefined ? '' : restriction ? ' orange' : ' my-ok')}>
+            {loading ? '확인 중' : restriction === undefined ? '확인하지 못했어요' : restriction ? '제한 중' : '정상'}
+          </span>
         </div>
         <div>
           <div>

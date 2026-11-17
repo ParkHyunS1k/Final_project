@@ -152,6 +152,8 @@ export async function readMyScore(user: Identity, now = new Date()) {
       id: String(p.id),
       title: p.title,
       role: p.role,
+      // 참여를 중단한 프로젝트. 화면은 표시하되 개인 완주로 세지 않는다.
+      left: Boolean(p.left_at),
       lifecycle: p.lifecycle,
       startedAt: iso(p.started_at ? new Date(p.started_at) : null),
       deadlineAt: iso(p.deadline_at ? new Date(p.deadline_at) : null),

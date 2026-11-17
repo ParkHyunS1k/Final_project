@@ -161,6 +161,8 @@ export function CareerWorkspace({
   const [notice, setNotice] = useState('');
   const [teamLoading, setTeamLoading] = useState(false);
   const [editing, setEditing] = useState(false);
+  // 가져온 공고·본문으로 한 번 저장하면 그 뒤에는 결과를 먼저 보인다.
+  const [prefillSaved, setPrefillSaved] = useState(false);
   const prefillApplied = useRef(false);
   const hydrate = useCallback(
     (value: Personal) => {
@@ -313,6 +315,7 @@ export function CareerWorkspace({
       });
       hydrate(await request<Personal>('/api/career'));
       setEditing(false);
+      setPrefillSaved(true);
       setNotice(
         '근거와 추천을 저장했습니다. 프로젝트 추천에서 다음 경험을 골라보세요.',
       );
@@ -336,7 +339,9 @@ export function CareerWorkspace({
   const profile = data?.profile;
   // 저장한 이력서가 있으면 분석 결과를 먼저 보이고 양식은 '수정하기'에서 연다. 가져온 공고·본문이 있으면 바로 연다.
   const showForm =
-    !profile || editing || Boolean(prefillPosting || prefillEvidence);
+    !profile ||
+    editing ||
+    (Boolean(prefillPosting || prefillEvidence) && !prefillSaved);
   const imported = data?.experiences.filter((e) => e.valid) ?? [];
   const Content = embedded ? 'section' : 'main';
   return (

@@ -583,6 +583,24 @@ test('개인 기여를 가져오면 목표 비교가 갱신되고 재개·담당
     (await json(await get(t.mate))).pending.some((p) => p.taskId === task.id && p.projectId === t.id),
     false,
   );
+  // 근거 글자 수는 저장 검사(recordExperience)와 같은 기준으로 센다: 이모지 3개(UTF-16 6자)도 보인다.
+  const emojiTask = state.tasks.find((v) => v.id !== task.id && v.person === state.me.person && v.skills.length);
+  if (emojiTask) {
+    await json(
+      await send(api.sprintPOST, t.owner, {
+        action: 'task',
+        projectId: t.id,
+        revision: (await json(await get(t.owner, t.id))).revision,
+        taskId: emojiTask.id,
+        done: true,
+        evidence: '😀😀😀',
+      }),
+    );
+    assert.ok(
+      (await json(await get(t.owner))).pending.some((p) => p.projectId === t.id && p.taskId === emojiTask.id),
+      '저장할 수 있는 업무는 목록에도 나온다',
+    );
+  } else assert.fail('이모지 근거를 확인할 내 다른 업무가 필요하다');
   const record = {
     action: 'recordExperience',
     projectId: t.id,

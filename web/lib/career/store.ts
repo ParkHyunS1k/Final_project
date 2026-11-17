@@ -182,7 +182,7 @@ export async function pendingExperiences(userId: string) {
     JOIN project_members m ON m.project_id=t.owner AND m.person=t.person AND m.user_id=? AND m.left_at IS NULL
     JOIN career_task_links l ON l.project_id=t.owner AND l.task_id=t.id
     JOIN sprints s ON s.owner=t.owner
-    WHERE t.done=true AND length(trim(t.evidence))>=5 AND jsonb_array_length(l.skill_ids)>0
+    WHERE t.done=true AND jsonb_array_length(l.skill_ids)>0
     AND NOT EXISTS(SELECT 1 FROM career_experiences e WHERE e.user_id=m.user_id AND e.project_id=t.owner AND e.task_id=t.id AND e.task_version=t.change_version AND e.evidence=t.evidence)
     ORDER BY s.updated_at DESC,t.id`)
     .bind(userId)
@@ -195,7 +195,8 @@ export async function pendingExperiences(userId: string) {
       evidence: string;
       skill_ids: SkillId[];
     }>();
-  return result.results.map((r) => ({
+  // 근거 길이는 recordExperience와 같은 JS 기준(trim 후 UTF-16 길이)으로 센다. SQL length와 다르다.
+  return result.results.filter((r) => r.evidence.trim().length >= 5).map((r) => ({
     projectId: r.project_id,
     projectTitle: r.project_title,
     taskId: Number(r.task_id),
