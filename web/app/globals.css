@@ -4713,3 +4713,10 @@ textarea {
     justify-self: start;
   }
 }
+.peer-share {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--heat-700);
+}

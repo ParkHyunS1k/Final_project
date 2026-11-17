@@ -179,6 +179,8 @@ export function ReviewCards({
   );
 }
 
+const SHARE_HREF = '/app?tab=activity&share=1';
+
 function Result({ data }: { data: ScoreData }) {
   const weak = weakestItem(data.breakdown);
   const next = nextGrade(data.score!);
@@ -218,6 +220,10 @@ function Result({ data }: { data: ScoreData }) {
         )}
       </p>
       <p className="tiny muted">팀원 {data.review.reviewers}명이 평가했어요</p>
+      {/* 프로필 등급은 매일 새벽 일괄 계산이라 '반영돼요'. */}
+      <a className="peer-share" href={SHARE_HREF}>
+        프로필에 반영돼요 · 프로필 공유하기
+      </a>
     </div>
   );
 }

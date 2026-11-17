@@ -212,3 +212,21 @@ void test('모달은 마감 시각이 지나면 서버에 다시 묻는다(제�
   assert.equal(reviewExpired(d, NOW + 22 * H), true);
   assert.equal(reviewExpired(d, 0), false);
 });
+
+void test('결과가 공개되면 프로필 공유 링크, 결과가 없거나 가려지면 없다', () => {
+  const result = data(
+    { status: 'closed', submitted: true, reviewers: 2 },
+    {
+      score: 4.5,
+      grade: 'A',
+      breakdown: [
+        { key: 'contribution', label: '기여도', average: 4.5 },
+        { key: 'communication', label: '소통', average: 4.5 },
+        { key: 'commitment', label: '약속 이행', average: 4.5 },
+      ],
+    },
+  );
+  assert.match(view(result), /href="\/app\?tab=activity&amp;share=1"[^>]*>프로필에 반영돼요 · 프로필 공유하기/);
+  assert.doesNotMatch(view(data({ status: 'closed', submitted: true, hidden: true })), /프로필 공유하기/);
+  assert.doesNotMatch(view(data({ status: 'open', submitted: true })), /프로필 공유하기/);
+});
