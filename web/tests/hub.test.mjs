@@ -546,7 +546,12 @@ test('연속 학습은 한국 날짜 경계를 사용하고, 점수·레벨·배
   const s = api.learningStats(records, new Date('2026-10-08T15:00:01Z'));
   assert.equal(s.streak, 3);
   assert.equal(s.days, 3);
-  assert.deepEqual(Object.keys(s).sort(), ['days', 'streak', 'today']);
+  assert.deepEqual(Object.keys(s).sort(), ['dates', 'days', 'streak', 'today']);
+  // 학습한 날 칸 그림용: 공부한 날짜만, 오래된 순.
+  assert.deepEqual(
+    api.learningStats([...records].reverse(), new Date('2026-10-08T15:00:01Z')).dates,
+    ['2026-10-06', '2026-10-07', '2026-10-08'],
+  );
   assert.equal(
     api.learningStats(records, new Date('2026-10-09T15:00:01Z')).streak,
     0,

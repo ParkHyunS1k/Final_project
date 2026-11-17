@@ -9,6 +9,8 @@ import { MAX_MEMBERS } from '@/lib/sprint-policy';
 import { sprintDay } from '@/lib/race';
 import { seoulTime } from '@/lib/sprint';
 import type { DashboardState, Deliverable, Lifecycle } from '@/components/project-dashboard';
+// 끝난 프로젝트의 내 업무는 마이페이지 '경험·포트폴리오'에서 모두 가져온다.
+const EXPERIENCE_HREF = '/app?tab=portfolio';
 
 const shortTime = (at: string) => seoulTime(at).slice(5).replace('-', '/');
 
@@ -85,7 +87,7 @@ export function ProjectOverview({
                 </ul>
               )}
               <div className="hub-actions">
-                <a className="btn" href={'/app?tab=experience&project=' + encodeURIComponent(state.projectId)}>
+                <a className="btn" href={EXPERIENCE_HREF}>
                   나의 경험으로 가져오기
                 </a>
                 <button className="btn primary" disabled={finishDisabled} onClick={onFinish}>

@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useCallback, useEffect, useState, type SubmitEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type SubmitEvent } from 'react';
 import {
   ArrowRight,
   House,
@@ -12,13 +12,20 @@ import {
   Users,
   Trophy,
   LogOut,
-  FileText,
 } from 'lucide-react';
 import { InterestList, TeamDirectory, homeTeamAction } from './team-directory';
 import { PageHeader } from './page-header';
 import { ProjectCreate } from './project-create';
 import { CareerWorkspace } from './career-workspace';
-import { GithubLink } from './github-link';
+import {
+  ActivityPanel,
+  ExperienceBoard,
+  MySummary,
+  SettingsPanel,
+  type ExperienceFilter,
+  type MyScore,
+  type PendingTask,
+} from './my-page';
 import { PendingReviewGate } from './peer-review';
 import ProjectDashboard from './project-dashboard';
 import { homeShowsProject } from '@/lib/app-navigation';
@@ -34,6 +41,7 @@ import {
   type SkillId,
 } from '@/lib/career/catalog';
 import type { readHub } from '@/lib/hub';
+import type { RestrictionView } from '@/lib/score';
 import type { Wire } from '@/lib/wire';
 import type { JoobleJob, JoobleSearchResult } from '@/lib/jooble';
 
@@ -45,9 +53,10 @@ type Tab =
   | 'templates'
   | 'work'
   | 'jobs'
+  | 'activity'
   | 'profile'
   | 'portfolio'
-  | 'experience'
+  | 'settings'
   | 'team';
 const TITLES: Record<Tab, string> = {
   home: '홈',
@@ -56,9 +65,10 @@ const TITLES: Record<Tab, string> = {
   templates: '프로젝트 찾기',
   work: '내 프로젝트',
   jobs: '공고 찾기',
+  activity: '활동',
   profile: '이력서·역량',
-  portfolio: '포트폴리오',
-  experience: '경험·성장 기록',
+  portfolio: '경험·포트폴리오',
+  settings: '설정',
   team: '팀 역할 추천',
 };
 const MAIN_NAV = [
@@ -66,12 +76,51 @@ const MAIN_NAV = [
   { id: 'templates', icon: Layers3 },
   { id: 'teams', icon: Users },
   { id: 'jobs', icon: BriefcaseBusiness },
-  { id: 'profile', icon: UserRound },
+  { id: 'activity', icon: UserRound },
 ] as const;
-const PERSONAL: Tab[] = ['profile', 'portfolio', 'experience'];
+const PERSONAL: Tab[] = ['activity', 'profile', 'portfolio', 'settings'];
 function tabFrom(value: string): Tab {
+  // 예전 '경험·성장 기록' 링크는 합친 '경험·포트폴리오'로 연다(2026-11-17).
+  if (value === 'experience') return 'portfolio';
   return Object.hasOwn(TITLES, value) ? (value as Tab) : 'home';
 }
+type MyData = {
+  /** 불러오지 못한 항목은 null(점수·신청 수) 또는 undefined(제한)로 둔다. 없음과 구분한다. */
+  score: MyScore | null;
+  restriction: RestrictionView | null | undefined;
+  pendingRequests: number | null;
+  failed: boolean;
+};
+type CareerData = {
+  experiences: Parameters<typeof ExperienceBoard>[0]['experiences'];
+  pending: PendingTask[];
+};
+async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const response = await apiFetch(url, { signal });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error || '불러오지 못했습니다.');
+  return body as T;
+}
+async function loadMy(signal?: AbortSignal): Promise<MyData> {
+  // 하나가 실패해도 나머지는 보인다.
+  const [score, projects, teams] = await Promise.allSettled([
+    getJson<MyScore>('/api/score/me', signal),
+    getJson<{ restriction: RestrictionView | null }>('/api/projects', signal),
+    getJson<{ requests: { status: string }[] }>('/api/teams', signal),
+  ]);
+  return {
+    score: score.status === 'fulfilled' ? score.value : null,
+    restriction:
+      projects.status === 'fulfilled' ? projects.value.restriction : undefined,
+    pendingRequests:
+      teams.status === 'fulfilled'
+        ? teams.value.requests.filter((r) => r.status === 'pending').length
+        : null,
+    failed: [score, projects, teams].some((r) => r.status === 'rejected'),
+  };
+}
+const loadCareer = (signal?: AbortSignal) =>
+  getJson<CareerData>('/api/career', signal);
 async function request<T>(
   body?: Record<string, unknown>,
   signal?: AbortSignal,
@@ -217,6 +266,49 @@ export function UnifiedApp({
   const [jobResults, setJobResults] = useState<JoobleSearchResult | null>(null);
   const [jobSearchBusy, setJobSearchBusy] = useState(false);
   const [jobSearchError, setJobSearchError] = useState('');
+  // 마이페이지: 점수·제한·신청 대기(요약·활동·설정)와 경험(경험·포트폴리오).
+  const [my, setMy] = useState<MyData | null>(null);
+  const [myRetry, setMyRetry] = useState(0);
+  const [career, setCareer] = useState<CareerData | null>(null);
+  const [careerError, setCareerError] = useState('');
+  const [careerRetry, setCareerRetry] = useState(0);
+  // 늦게 도착한 예전 경험 응답이 저장 뒤 재조회 결과를 덮지 않도록 마지막 요청만 반영한다.
+  const careerSeq = useRef(0);
+  const [expFilter, setExpFilter] = useState<ExperienceFilter>('all');
+  const personal = PERSONAL.includes(tab);
+  // 마이페이지에 들어올 때 한 번 부르고, 마이페이지 안의 탭 이동에서는 다시 부르지 않는다.
+  useEffect(() => {
+    if (!personal) return;
+    const c = new AbortController();
+    void loadMy(c.signal).then((value) => {
+      if (!c.signal.aborted) setMy(value);
+    });
+    return () => c.abort();
+  }, [personal, myRetry]);
+  async function reloadCareer(signal?: AbortSignal) {
+    const n = ++careerSeq.current;
+    const value = await loadCareer(signal);
+    if (n === careerSeq.current) {
+      setCareer(value);
+      setCareerError('');
+    }
+  }
+  useEffect(() => {
+    if (tab !== 'portfolio') return;
+    const c = new AbortController();
+    const n = ++careerSeq.current;
+    loadCareer(c.signal)
+      .then((value) => {
+        if (n !== careerSeq.current) return;
+        setCareer(value);
+        setCareerError('');
+      })
+      .catch((e) => {
+        if (!c.signal.aborted && n === careerSeq.current)
+          setCareerError(e.message);
+      });
+    return () => c.abort();
+  }, [tab, careerRetry]);
   const refresh = useCallback(async () => setData(await request<Hub>()), []);
   useEffect(() => {
     const controller = new AbortController();
@@ -444,14 +536,14 @@ export function UnifiedApp({
               key={item.id}
               className={
                 tab === item.id ||
-                (item.id === 'profile' && PERSONAL.includes(tab)) ||
+                (item.id === 'activity' && PERSONAL.includes(tab)) ||
                 (item.id === 'home' && (tab === 'work' || tab === 'team'))
                   ? 'active'
                   : ''
               }
               aria-current={
                 tab === item.id ||
-                (item.id === 'profile' && PERSONAL.includes(tab)) ||
+                (item.id === 'activity' && PERSONAL.includes(tab)) ||
                 (item.id === 'home' && tab === 'work')
                   ? 'page'
                   : undefined
@@ -459,12 +551,12 @@ export function UnifiedApp({
               onClick={() => navigate(item.id)}
             >
               <item.icon size={19} />
-              {item.id === 'profile' ? '마이페이지' : TITLES[item.id]}
+              {item.id === 'activity' ? '마이페이지' : TITLES[item.id]}
             </button>
           ))}
         </nav>
         <div className="hub-sidebar-bottom">
-          <button className="hub-user" onClick={() => navigate('profile')}>
+          <button className="hub-user" onClick={() => navigate('activity')}>
             <span>{data?.name.slice(0, 1) || <UserRound size={17} />}</span>
             {data?.name || '마이페이지'}
           </button>
@@ -500,14 +592,15 @@ export function UnifiedApp({
           {notice && <output className="hub-notice">{notice}</output>}
           {PERSONAL.includes(tab) && (
             <>
-              <PageHeader
-                title="마이페이지"
-                description="이력서·포트폴리오·경험 기록을 모아 다음 프로젝트와 공고로 이어요."
-                actions={
-                  <button className="btn" onClick={() => navigate('jobs')}>
-                    관심 공고 {jobs.length}개 <ArrowRight size={16} />
-                  </button>
+              <h1 className="sr-only">마이페이지</h1>
+              <MySummary
+                name={data?.name ?? ''}
+                target={
+                  TARGETS.find((t) => t.id === data?.profile?.targetRole)
+                    ?.name ?? ''
                 }
+                score={my?.score ?? null}
+                stats={data?.stats ?? { streak: 0, days: 0 }}
               />
               <nav className="hub-tabs" aria-label="마이페이지 메뉴">
                 {PERSONAL.map((p) => (
@@ -1142,7 +1235,30 @@ export function UnifiedApp({
               />
             </>
           )}
-          {(tab === 'profile' || tab === 'team' || tab === 'experience') && (
+          {tab === 'activity' && (
+            <ActivityPanel
+              score={my?.score ?? null}
+              failed={Boolean(my?.failed && !my.score)}
+              onRetry={() => setMyRetry((n) => n + 1)}
+              dates={data?.stats.dates ?? []}
+              pendingRequests={my ? my.pendingRequests : 0}
+              jobs={jobs.length}
+              now={new Date()}
+              onOpenProject={(id) => navigate('work', id)}
+              onTeams={() => navigate('teams')}
+              onJobs={() => navigate('jobs')}
+            />
+          )}
+          {tab === 'settings' && (
+            <SettingsPanel
+              name={data?.name ?? ''}
+              restriction={my ? my.restriction : null}
+              loading={!my}
+              busy={busy}
+              onSignOut={() => void act(signOut)}
+            />
+          )}
+          {(tab === 'profile' || tab === 'team') && (
             <>
               {tab === 'profile' && (posting || evidence) && (
                 <div className="hub-notice">
@@ -1150,7 +1266,6 @@ export function UnifiedApp({
                   가져왔습니다. 내용을 확인한 뒤 분석·저장해주세요.
                 </div>
               )}
-              {tab === 'profile' && <GithubLink />}
               <CareerWorkspace
                 key={tab + selectedProject + posting + evidence}
                 embedded
@@ -1160,7 +1275,11 @@ export function UnifiedApp({
                 prefillEvidence={evidence}
                 onNavigate={(next) =>
                   navigate(
-                    next === 'recommend' ? 'templates' : next,
+                    next === 'recommend'
+                      ? 'templates'
+                      : next === 'experience'
+                        ? 'portfolio'
+                        : next,
                     next === 'team' ? selectedProject : '',
                   )
                 }
@@ -1169,84 +1288,73 @@ export function UnifiedApp({
           )}
           {tab === 'portfolio' && (
             <>
-              <section className="hub-card hub-info">
-                <FileText size={27} />
-                <div>
-                  <h2>이력서 뒤의 실제 경험까지.</h2>
-                  <p>
-                    포트폴리오 본문과 기여 기록을 이력서 분석에 합칠 수 있어요.
-                    GitHub 링크는 보관만 하며, 저장소 수집·코드 검증·AI 구술
-                    평가는 아직 수행하지 않습니다.
-                  </p>
-                </div>
-                <button
-                  className="btn primary"
-                  onClick={() => newRecord('portfolio')}
-                >
-                  자료 추가
-                </button>
-              </section>
               {record.id &&
                 recordKind === 'portfolio' &&
                 recordForm('portfolio')}
-              <div className="hub-grid">
-                {portfolios.map((p) => (
-                  <article className="hub-card" key={p.id}>
-                    <span className="hub-card-label">비공개 포트폴리오</span>
-                    <h3>{p.payload.title}</h3>
-                    <p className="hub-excerpt">
-                      {p.payload.text ||
-                        '본문을 추가하면 역량 분석에 함께 사용할 수 있어요.'}
-                    </p>
-                    {p.payload.url && (
-                      <a
-                        className="hub-text-button"
-                        href={p.payload.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        원본 열기 ↗
-                      </a>
-                    )}
-                    <div className="hub-actions">
-                      <button
-                        className="btn"
-                        disabled={!p.payload.text}
-                        onClick={() => {
-                          setEvidence(
-                            `[포트폴리오: ${p.payload.title}]\n${p.payload.text}`,
-                          );
-                          navigate('profile');
-                        }}
-                      >
-                        이력서 분석에 합치기
-                      </button>
-                      <button
-                        className="btn"
-                        onClick={() => {
-                          setRecordKind('portfolio');
-                          setRecord({
-                            id: p.id,
-                            revision: p.revision,
-                            title: p.payload.title || '',
-                            url: p.payload.url || '',
-                            text: p.payload.text || '',
-                          });
-                        }}
-                      >
-                        수정
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-              {!portfolios.length && (
-                <p className="hub-empty">
-                  프로젝트의 문제, 내가 한 일, 확인한 결과를 한 번만
-                  정리해두세요.
-                  <br />
-                  역량 분석과 이력서 보완의 재료로 함께 사용할 수 있어요.
-                </p>
+              {!career && careerError && (
+                <div className="hub-alert" role="alert">
+                  <p>{careerError}</p>
+                  <button
+                    className="btn"
+                    onClick={() => setCareerRetry((n) => n + 1)}
+                  >
+                    다시 불러오기
+                  </button>
+                </div>
+              )}
+              {!career && !careerError && (
+                <output className="hub-empty">경험을 불러오는 중입니다.</output>
+              )}
+              {career && (
+              <ExperienceBoard
+                experiences={career.experiences}
+                pending={career.pending}
+                portfolios={portfolios}
+                filter={expFilter}
+                busy={busy}
+                onFilter={setExpFilter}
+                onRecord={(t, values) =>
+                  act(async () => {
+                    const response = await apiFetch('/api/career', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        action: 'recordExperience',
+                        projectId: t.projectId,
+                        taskId: t.taskId,
+                        taskVersion: t.taskVersion,
+                        ...values,
+                      }),
+                    });
+                    const result = await response.json();
+                    if (!response.ok)
+                      throw new Error(
+                        result.error || '경험을 저장하지 못했습니다.',
+                      );
+                    await reloadCareer();
+                    setNotice(
+                      '본인이 확인한 경험과 이력서 문장 초안을 저장했습니다.',
+                    );
+                  })
+                }
+                onMerge={(p) => {
+                  setEvidence(
+                    `[포트폴리오: ${p.payload.title}]\n${p.payload.text}`,
+                  );
+                  navigate('profile');
+                }}
+                onEdit={(p) => {
+                  setRecordKind('portfolio');
+                  setRecord({
+                    id: p.id,
+                    revision: p.revision,
+                    title: p.payload.title || '',
+                    url: p.payload.url || '',
+                    text: p.payload.text || '',
+                  });
+                }}
+                onAdd={() => newRecord('portfolio')}
+              />
               )}
             </>
           )}
