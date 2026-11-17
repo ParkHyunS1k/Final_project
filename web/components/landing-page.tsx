@@ -306,14 +306,6 @@ export function LandingPage() {
                 <br />
                 20개 템플릿으로, 혼자서도 팀과 함께도 시작하세요.
               </p>
-              <div className="hero-actions">
-                <Link className="rl-btn" href={START} prefetch={false}>
-                  나의 성장 공간 열기
-                </Link>
-                <a className="rl-link" href="#diagnose">
-                  스크롤해서 출발 ↓
-                </a>
-              </div>
             </div>
             <p className="hero-end" aria-hidden="true">
               출발 전에,

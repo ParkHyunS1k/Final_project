@@ -134,8 +134,7 @@ body:has(.rl) {
 .hero-copy .line + .line {
   animation-delay: 0.14s;
 }
-.hero-copy .lead,
-.hero-copy .hero-actions {
+.hero-copy .lead {
   animation: rl-rise 0.9s 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 @keyframes rl-rise {
@@ -197,13 +196,6 @@ body:has(.rl) {
   bottom: 14svh;
   opacity: calc(1 - var(--hero) * 3);
   transform: translateY(calc(var(--hero) * -80px));
-}
-.hero-actions {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  margin-top: 36px;
-  flex-wrap: wrap;
 }
 .hero-end {
   position: absolute;
@@ -1800,8 +1792,7 @@ body:has(.rl) {
     opacity: 1;
   }
   .hero-copy .line,
-  .hero-copy .lead,
-  .hero-copy .hero-actions {
+  .hero-copy .lead {
     animation: none;
   }
   .monitor {
