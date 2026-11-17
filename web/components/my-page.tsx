@@ -7,6 +7,8 @@ import { GithubLink } from './github-link';
 import { ThemeToggle } from './theme-toggle';
 import { skillName, type SkillId } from '@/lib/career/catalog';
 import { sprintDay } from '@/lib/race';
+import { studyCalendar } from '@/lib/study-calendar';
+export { studyCalendar };
 import { restrictionMessage, type Grade, type RestrictionView } from '@/lib/score';
 
 export type HistoryRow = {
@@ -49,20 +51,9 @@ type Portfolio = { id: string; revision: number; payload: { title?: string; url?
 export type ExperienceFilter = 'all' | 'project' | 'portfolio';
 
 const DAY_MS = 86_400_000;
-const seoulDate = (d: Date) => new Date(d.getTime() + 9 * 3_600_000).toISOString().slice(0, 10);
 const shortDate = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric' }) : '';
 const ROLE: Record<string, string> = { owner: '팀장', member: '팀원' };
-
-/** 오늘(서울)로 끝나는 weeks주 칸. 공부한 날만 on. */
-export function studyCalendar(dates: string[], now: Date, weeks = 12) {
-  const studied = new Set(dates);
-  const today = Date.parse(seoulDate(now) + 'T00:00:00Z');
-  return Array.from({ length: weeks * 7 }, (_, i) => {
-    const date = new Date(today - (weeks * 7 - 1 - i) * DAY_MS).toISOString().slice(0, 10);
-    return { date, on: studied.has(date) };
-  });
-}
 
 export function stateLabel(p: Pick<HistoryRow, 'lifecycle' | 'startedAt'> & Partial<HistoryRow>, now: Date) {
   if (p.left) return '참여 중단';
