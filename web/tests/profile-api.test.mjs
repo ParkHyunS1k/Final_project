@@ -50,7 +50,6 @@ await build({
 });
 const api = await import(pathToFileURL(outfile).href);
 
-const H = 3600000;
 const NAMES = { lead: '리드팀장', mate1: '첫째팀원', mate2: '둘째팀원' };
 const headers = (user, extra = {}) => ({
   'oai-authenticated-user-id': user,
@@ -204,7 +203,8 @@ test('공개 프로필: 꺼졌거나 없는 아이디는 null, 완주·참여 �
 
   const profile = await api.readPublicProfile('pub-user');
   assert.equal(profile.displayName, '공개하는 사람');
-  assert.deepEqual(profile.projects.map((p) => p.id).sort(), [solo.projectId, team].sort());
+  const byId = (x, y) => x.localeCompare(y);
+  assert.deepEqual(profile.projects.map((p) => p.id).sort(byId), [solo.projectId, team].sort(byId));
   const teamRow = profile.projects.find((p) => p.id === team);
   assert.equal(teamRow.members, 3);
   assert.equal(teamRow.role, 'owner');
