@@ -13,7 +13,7 @@ mkdirSync(cache, { recursive: true });
 const outfile = join(mkdtempSync(join(cache, 'pm-public-')), 'public.mjs');
 await build({
   stdin: {
-    contents: "export { PublicProfileView } from './components/public-profile';",
+    contents: "export { PublicProfileView } from './components/public-profile'; export { ProfileCard } from './components/profile-card';",
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -25,7 +25,7 @@ await build({
   packages: 'external',
   alias: { '@': process.cwd() },
 });
-const { PublicProfileView } = await import(pathToFileURL(outfile).href);
+const { PublicProfileView, ProfileCard } = await import(pathToFileURL(outfile).href);
 const now = new Date('2026-11-17T03:00:00Z');
 const profile = {
   handle: 'harin',
@@ -80,4 +80,19 @@ void test('프로젝트: 이름·기간·인원·역할·등급, 경험: 문장�
   assert.match(html, /PR #12 머지/);
   assert.equal((html.match(/완료 근거/g) ?? []).length, 1);
   assert.match(html, /href="\/"[^>]*>나도 7일 스프린트 시작하기/);
+});
+
+void test('카드: 등급·점수·상위 %·이름·완주·주소, 저장값 없으면 E와 안내', () => {
+  for (const size of ['og', 'story']) {
+    const html = renderToString(createElement(ProfileCard, { profile, size }));
+    assert.match(html, />A</);
+    assert.match(html, /4\.5 \/ 5 · 상위 12%/);
+    assert.match(html, /하린/);
+    assert.match(html, /완주 2/);
+    assert.match(html, /\/u\/harin/);
+    assert.match(html, /소통왕/);
+  }
+  const none = renderToString(createElement(ProfileCard, { profile: { ...profile, standing: null }, size: 'og' }));
+  assert.match(none, />E</);
+  assert.match(none, /평가를 받으면 상위 %가 나와요/);
 });

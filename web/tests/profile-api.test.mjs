@@ -24,6 +24,7 @@ await build({
       "export { GET as cronGET } from './app/api/internal/profile-scores/route';",
       "export { GET as profileGET, POST as profilePOST } from './app/api/profile/route';",
       "export { readPublicProfile } from './lib/profile-store';",
+      "export { GET as cardGET } from './app/u/[handle]/card/route';",
     ].join(' '),
     resolveDir: process.cwd(),
     loader: 'ts',
@@ -32,6 +33,8 @@ await build({
   bundle: true,
   platform: 'node',
   format: 'esm',
+  // 이미지 생성 모듈은 404 경로에서 불러오지 않는다(동적 import).
+  external: ['next/og'],
   plugins: [
     {
       name: 'test-db',
@@ -224,4 +227,15 @@ test('공개 프로필: 꺼졌거나 없는 아이디는 null, 완주·참여 �
   const hidden = await api.readPublicProfile('pub-user');
   assert.deepEqual(hidden.projects.map((p) => p.id), [team]);
   assert.equal(hidden.experiences[0].evidence, null);
+});
+
+test('카드 이미지: 꺼졌거나 없는 아이디는 404', async () => {
+  const card = (handle) =>
+    api.cardGET(new Request('https://test.local/u/' + handle + '/card'), { params: Promise.resolve({ handle }) });
+  assert.equal((await card('nobody')).status, 404);
+  const off = await save('cardoff', { version: 0, handle: 'card-off', displayName: '꺼진 사람', enabled: false });
+  assert.equal(off.settings.enabled, false);
+  const res = await card('card-off');
+  assert.equal(res.status, 404);
+  assert.equal(res.headers.get('cache-control'), 'no-store');
 });
