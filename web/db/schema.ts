@@ -747,3 +747,44 @@ export const sourceIssueSpans = pgTable(
     index('idx_source_issue_spans_repo').on(t.projectId, t.repo, t.issueNumber),
   ],
 ).enableRLS();
+
+// 프로필 점수(2026-11-17). 매일 일괄 계산한 저장값만 화면·카드·공개 프로필이 쓴다.
+// 상위 %는 같은 formula_version끼리만 비교한다. score null은 아직 공개된 평가가 없음.
+export const profileScores = pgTable(
+  'profile_scores',
+  {
+    userId: text('user_id').primaryKey(),
+    score: doublePrecision('score'),
+    grade: text('grade').notNull(),
+    formulaVersion: text('formula_version').notNull(),
+    computedAt: timestamp('computed_at', tz).notNull(),
+  },
+  (t) => [index('idx_profile_scores_rank').on(t.formulaVersion, t.score)],
+).enableRLS();
+
+// 공개 프로필 설정. 본인이 enabled를 켰을 때만 /u/<handle>이 열린다. 숨김·근거 목록은 본인 id만 담는다.
+export const publicProfiles = pgTable('public_profiles', {
+  userId: text('user_id').primaryKey(),
+  handle: text('handle').notNull().unique(),
+  displayName: text('display_name').notNull(),
+  enabled: boolean('enabled').default(false).notNull(),
+  showGithub: boolean('show_github').default(false).notNull(),
+  hiddenProjects: jsonb('hidden_projects').default(sql`'[]'::jsonb`).notNull(),
+  hiddenExperiences: jsonb('hidden_experiences').default(sql`'[]'::jsonb`).notNull(),
+  shownEvidence: jsonb('shown_evidence').default(sql`'[]'::jsonb`).notNull(),
+  version: integer('version').default(1).notNull(),
+  updatedAt: timestamp('updated_at', tz).notNull(),
+}).enableRLS();
+
+// 공개 프로필 변경 기록. action: create | update | enable | disable | handle.
+export const publicProfileEvents = pgTable(
+  'public_profile_events',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull(),
+    action: text('action').notNull(),
+    detail: jsonb('detail').notNull(),
+    createdAt: timestamp('created_at', tz).defaultNow().notNull(),
+  },
+  (t) => [index('idx_public_profile_events_user').on(t.userId, t.createdAt)],
+).enableRLS();
