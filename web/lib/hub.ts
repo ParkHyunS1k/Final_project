@@ -69,6 +69,7 @@ export function learningStats(records: HubRecord[], now = new Date()) {
   return {
     streak,
     days: days.size,
+    dates: [...days].sort(),
     today:
       records.find((r) => r.id === 'checkin:' + dateInSeoul(now))?.payload
         .status ?? '',

@@ -273,6 +273,16 @@ test('완주한 팀: 기간 중 1회 제출, 익명 평균은 공개 뒤에만, 
   assert.equal(summary.bestGrade, 'A');
   assert.equal(summary.projects, 1);
   assert.equal(summary.badges.find((b) => b.id === 'finish').count, 1);
+  // 마이페이지 활동: 평균과 프로젝트별 기록(내 점수·등급만).
+  assert.equal(summary.average, 4.5);
+  const row = summary.history.find((p) => p.id === projectId);
+  assert.equal(row.title, '점수 스프린트');
+  assert.equal(row.role, 'owner');
+  assert.equal(row.lifecycle, 'completed');
+  assert.equal(row.score, 4.5);
+  assert.equal(row.grade, 'A');
+  assert.ok(Date.parse(row.startedAt) && Date.parse(row.deadlineAt));
+  assert.equal((await me('m1')).history.find((p) => p.id === projectId).grade, 'S');
 });
 
 test('계정 분리: 비멤버·비로그인·프로젝트 미지정', async () => {
@@ -294,6 +304,8 @@ test('계정 분리: 비멤버·비로그인·프로젝트 미지정', async () 
   assert.equal(stranger.totalScore, 0);
   assert.equal(stranger.projects, 0);
   assert.ok(stranger.badges.every((b) => b.count === 0));
+  assert.deepEqual(stranger.history, []);
+  assert.equal(stranger.average, null);
 });
 
 test('2인 팀: 서로 평가는 남지만 1명 평가라 점수는 나오지 않는다, 동시 제출은 한 번만', async () => {

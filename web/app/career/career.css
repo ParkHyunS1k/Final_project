@@ -538,3 +538,21 @@
     align-items: flex-start;
   }
 }
+/* 저장한 이력서가 있으면 결과만 한 줄로(마이페이지 2026-11-17). */
+.cf-columns.cf-results {
+  grid-template-columns: 1fr;
+}
+.cf-resume-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.cf-resume-bar h2 {
+  margin: 0;
+}
+.cf-resume-bar p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}

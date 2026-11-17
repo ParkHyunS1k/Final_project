@@ -140,10 +140,25 @@ export async function readScore(projectId: string, user: Identity, now = new Dat
 /** GET /api/score/me. 내가 속한 프로젝트 전체의 확정 점수·최고 등급·뱃지. */
 export async function readMyScore(user: Identity, now = new Date()) {
   const projects = await listProjects(user);
-  const scores = [];
+  const scores: Awaited<ReturnType<typeof projectScore>>[] = [];
   for (const p of projects) scores.push(await projectScore(String(p.id), user.id, now));
   const me = summarize(scores);
-  return { ...me, badges: me.badges.map((b) => ({ ...b, earnedAt: iso(b.earnedAt) })) };
+  return {
+    ...me,
+    average: me.projects ? Math.round((me.totalScore / me.projects) * 10) / 10 : null,
+    badges: me.badges.map((b) => ({ ...b, earnedAt: iso(b.earnedAt) })),
+    // 마이페이지 활동: 내 프로젝트별 상태와 내 점수·등급(다른 사람 점수는 없다).
+    history: projects.map((p, i) => ({
+      id: String(p.id),
+      title: p.title,
+      role: p.role,
+      lifecycle: p.lifecycle,
+      startedAt: iso(p.started_at ? new Date(p.started_at) : null),
+      deadlineAt: iso(p.deadline_at ? new Date(p.deadline_at) : null),
+      score: scores[i].score,
+      grade: scores[i].grade,
+    })),
+  };
 }
 
 /** POST /api/score { action: 'review' }. 평가자당 1회, 대상 전원을 한 트랜잭션으로 저장한다. */
