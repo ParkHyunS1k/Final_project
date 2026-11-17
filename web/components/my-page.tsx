@@ -1,7 +1,7 @@
 'use client';
 // 마이페이지(2026-11-17): 요약 + 활동·경험·설정. 이력서·역량은 CareerWorkspace가 그린다.
 // 점수·등급·뱃지는 동료평가(GET /api/score/me) 하나다. 학습 기록은 '공부함' 체크인 날짜만 칠한다.
-import { LogOut } from 'lucide-react';
+import { LogOut, Share2 } from 'lucide-react';
 import { ExperienceForm } from './experience-form';
 import { GithubLink } from './github-link';
 import { ThemeToggle } from './theme-toggle';
@@ -101,12 +101,10 @@ export function MySummary({
         </div>
       </div>
       <div className="my-standing">
-        <span className="my-top">
-          {p?.percentile != null ? `상위 ${p.percentile}%` : '평가를 받으면 상위 %가 나와요'}
-        </span>
+        {p?.percentile != null && <span className="my-top">{`상위 ${p.percentile}%`}</span>}
         <span className="my-meta">{p ? basisLabel(p.computedAt) : '매일 새벽에 계산돼요'}</span>
-        <button type="button" className="btn primary" onClick={onShare}>
-          내 프로필 공유
+        <button type="button" className="icon-btn my-share-btn" onClick={onShare} aria-label="내 프로필 공유" title="내 프로필 공유">
+          <Share2 size={18} />
         </button>
       </div>
       <dl className="my-stats">

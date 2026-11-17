@@ -73,7 +73,9 @@ void test('요약: 이름, 프로필 등급·상위 %·기준 시각, 연속 학
   assert.match(html, /<b>A<\/b>[\s\S]*프로필 등급/);
   assert.match(html, /상위 12%/);
   assert.match(html, /11월 17일 03:00 기준/);
-  assert.match(html, /<button[^>]*>내 프로필 공유<\/button>/);
+  // 공유는 아이콘 버튼(이름은 aria-label).
+  assert.match(html, /<button[^>]*aria-label="내 프로필 공유"[^>]*><svg/);
+  assert.doesNotMatch(html, />내 프로필 공유</);
   assert.match(html, /연속 학습<\/dt><dd>5일/);
   assert.match(html, /학습한 날<\/dt><dd>23일/);
   assert.match(html, /완주한 프로젝트<\/dt><dd>1개/);
@@ -89,7 +91,8 @@ void test('요약: 저장값이 없으면 E·점수 없음·새벽 계산 안내
   const unscored = renderToString(
     createElement(MySummary, { name: '새 사용자', target: '', score: { ...score, profile: { ...score.profile, score: null, grade: 'E', percentile: null } }, stats: { streak: 0, days: 0 } }),
   );
-  assert.match(unscored, /평가를 받으면 상위 %가 나와요/);
+  assert.doesNotMatch(unscored, /평가를 받으면/);
+  assert.doesNotMatch(unscored, /상위 \d+%/);
   assert.match(html, /완주한 프로젝트<\/dt><dd>0개/);
 });
 

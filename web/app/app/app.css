@@ -1188,15 +1188,10 @@
 }
 .my-grade {
   display: grid;
-  place-items: center;
-  width: 66px;
-  height: 66px;
-  border: 1px solid var(--heat-300);
-  border-radius: 14px;
-  background: var(--heat-50);
+  justify-items: center;
 }
 .my-grade b {
-  font-size: 26px;
+  font-size: 34px;
   line-height: 1;
   color: var(--heat-700);
 }
@@ -1432,10 +1427,8 @@
   }
   .my-grade {
     grid-column: 1 / -1;
-    width: auto;
-    height: auto;
-    padding: 8px;
     grid-template-columns: auto auto;
+    align-items: baseline;
     gap: 8px;
     justify-content: start;
   }
@@ -1468,7 +1461,7 @@
   font-weight: 800;
   color: var(--heat-700);
 }
-.my-standing .btn {
+.my-standing .my-share-btn {
   margin-left: auto;
 }
 .my-share {
@@ -1552,4 +1545,17 @@
 }
 .my-public .btn {
   justify-self: start;
+}
+.my-share-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--heat-700);
+  cursor: pointer;
+}
+.my-share-btn:hover {
+  background: var(--heat-50);
 }
