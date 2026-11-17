@@ -23,6 +23,7 @@ await build({
       "export { GET as careerGET, POST as careerPOST } from './app/api/career/route';",
       "export { GET as cronGET } from './app/api/internal/profile-scores/route';",
       "export { GET as profileGET, POST as profilePOST } from './app/api/profile/route';",
+      "export { readPublicProfile } from './lib/profile-store';",
     ].join(' '),
     resolveDir: process.cwd(),
     loader: 'ts',
@@ -177,4 +178,50 @@ test('로그인하지 않으면 401, 다른 Origin이면 403', async () => {
     }),
   );
   assert.equal(evil.status, 403);
+});
+
+test('공개 프로필: 꺼졌거나 없는 아이디는 null, 완주·참여 중인 프로젝트와 확인한 업무만, 팀원 정보 없음', async () => {
+  const solo = await soloWithExperiences('pub');
+  const team = await gradedTeam('pub', ['mate1', 'mate2'], '함께 만든 서비스');
+  const leftTeam = await gradedTeam('pub', ['mate1', 'mate2'], '중간에 나온 팀');
+  await run("UPDATE project_members SET left_at=now() WHERE project_id=? AND user_id='pub'", leftTeam);
+  const running = await call(api.projectsPOST, 'pub', '/api/projects', {
+    action: 'create', title: '진행 중 프로젝트', goal: '진행한다', scope: '범위', completionCriteria: '기준', duration: 7, agreed: true,
+  }, 201);
+  await act('pub', running.projectId, 'start');
+  // 경험 하나는 업무 근거가 바뀌어 '재확인 필요'가 된다.
+  const [kept, stale] = solo.experiences;
+  await run('UPDATE sprint_tasks SET evidence=? WHERE owner=? AND id=?', '바뀐 근거입니다', solo.projectId, stale.task_id);
+
+  assert.equal(await api.readPublicProfile('nobody'), null);
+  const saved = await save('pub', { version: 0, handle: 'pub-user', displayName: '공개하는 사람', enabled: false, shownEvidence: [kept.id] });
+  assert.equal(await api.readPublicProfile('pub-user'), null, '꺼져 있으면 열리지 않는다');
+  await save('pub', { ...saved.settings, enabled: true });
+  assert.equal((await cron()).status, 200);
+
+  const profile = await api.readPublicProfile('pub-user');
+  assert.equal(profile.displayName, '공개하는 사람');
+  assert.deepEqual(profile.projects.map((p) => p.id).sort(), [solo.projectId, team].sort());
+  const teamRow = profile.projects.find((p) => p.id === team);
+  assert.equal(teamRow.members, 3);
+  assert.equal(teamRow.role, 'owner');
+  assert.equal(teamRow.grade, 'A');
+  assert.equal(profile.projects.find((p) => p.id === solo.projectId).role, 'solo');
+  assert.equal(profile.finished, 2);
+  assert.deepEqual(profile.experiences.map((e) => e.id), [kept.id]);
+  assert.match(profile.experiences[0].evidence, /근거/);
+  assert.ok(profile.badges.some((b) => b.id === 'finish' && b.count === 2));
+  // 숫자는 마이페이지와 같은 저장값.
+  const mine = await call(api.meGET, 'pub', '/api/score/me');
+  assert.deepEqual(profile.standing, mine.profile);
+  // 팀원 이름·식별자는 어디에도 없다.
+  const json = JSON.stringify(profile);
+  for (const leak of ['첫째팀원', '둘째팀원', 'mate1', 'mate2', 'pub@test.local']) assert.doesNotMatch(json, new RegExp(leak));
+
+  // 숨긴 프로젝트, 근거를 끈 경험.
+  const now = await settings('pub');
+  await save('pub', { ...now.settings, hiddenProjects: [solo.projectId], shownEvidence: [] });
+  const hidden = await api.readPublicProfile('pub-user');
+  assert.deepEqual(hidden.projects.map((p) => p.id), [team]);
+  assert.equal(hidden.experiences[0].evidence, null);
 });

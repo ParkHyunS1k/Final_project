@@ -3,7 +3,11 @@
 import { database, Conflict } from './sprint-store';
 import { PolicyError } from './sprint-policy';
 import { projectRows, type Identity } from './projects';
-import { readExperiences } from './career/store';
+import { readExperiences, readProfile } from './career/store';
+import { TARGETS } from './career/catalog';
+import { learningStats, type HubRecord } from './hub';
+import { dateInSeoul } from './sprint';
+import type { Grade } from './score';
 import { readGithubAccount } from './github-account';
 import { scoreSummary } from './score-store';
 import { PROFILE_FORMULA, profileGrade, profileScore, topPercent, type ProfileGrade } from './profile-score';
@@ -213,4 +217,108 @@ export async function saveProfileSettings(user: Identity, b: Record<string, unkn
   }
   if (changed !== 1) throw new Conflict('다른 곳에서 바뀌었어요. 다시 불러와 주세요.');
   return { settings: { ...next, version: version + 1 } satisfies ProfileSettings };
+}
+
+// ---- 공개 프로필 데이터 (/u/<아이디>) ----
+
+export type PublicProfile = {
+  handle: string;
+  displayName: string;
+  target: string;
+  github: string | null;
+  standing: ProfileStanding | null;
+  finished: number;
+  streak: number;
+  /** 최근 84일 안에 공부한 날(서울 날짜). */
+  dates: string[];
+  badges: { id: string; label: string; count: number }[];
+  projects: {
+    id: string;
+    title: string;
+    startedAt: string | null;
+    deadlineAt: string | null;
+    members: number;
+    role: 'owner' | 'member' | 'solo';
+    grade: Grade | null;
+  }[];
+  experiences: {
+    id: string;
+    projectTitle: string | null;
+    title: string;
+    bullet: string;
+    skills: string[];
+    evidence: string | null;
+  }[];
+};
+
+const DAY_MS = 86_400_000;
+
+/** 켜진 공개 프로필만. 꺼졌거나 없는 아이디는 null(존재 여부를 알리지 않는다). 팀원 정보는 담지 않는다. */
+export async function readPublicProfile(handle: string, now = new Date()): Promise<PublicProfile | null> {
+  const db = database();
+  const row = await db
+    .prepare(`SELECT user_id,${SETTINGS_COLUMNS} FROM public_profiles WHERE handle=? AND enabled=true`)
+    .bind(String(handle).toLowerCase())
+    .first<SettingsRow & { user_id: string }>();
+  if (!row) return null;
+  const userId = row.user_id;
+  const s = toSettings(row);
+  const [summary, standing, github, experiences, career, records] = await Promise.all([
+    scoreSummary(userId, now),
+    profileStanding(userId),
+    s.showGithub ? readGithubAccount(userId) : Promise.resolve(null),
+    readExperiences(userId),
+    readProfile(userId),
+    db
+      .prepare("SELECT id,kind,payload,revision,created_at FROM hub_records WHERE user_id=? AND kind='checkin'")
+      .bind(userId)
+      .all<HubRecord>(),
+  ]);
+  const finishedRows = summary.history.filter((p) => p.lifecycle === 'completed' && !p.left);
+  const shown = finishedRows.filter((p) => !s.hiddenProjects.includes(p.id));
+  const counts = new Map<string, number>();
+  if (shown.length) {
+    const result = await db
+      .prepare(
+        `SELECT project_id,count(*)::int AS n FROM project_members WHERE left_at IS NULL AND project_id IN (${shown.map(() => '?').join(',')}) GROUP BY project_id`,
+      )
+      .bind(...shown.map((p) => p.id))
+      .all<{ project_id: string; n: number }>();
+    for (const r of result.results) counts.set(r.project_id, Number(r.n));
+  }
+  const stats = learningStats(records.results, now);
+  const since = new Date(Date.parse(dateInSeoul(now) + 'T00:00:00Z') - 83 * DAY_MS).toISOString().slice(0, 10);
+  return {
+    handle: s.handle,
+    displayName: s.displayName,
+    target: TARGETS.find((t) => t.id === career?.targetRole)?.name ?? '',
+    github: github?.login ?? null,
+    standing,
+    finished: finishedRows.length,
+    streak: stats.streak,
+    dates: stats.dates.filter((d) => d >= since),
+    badges: summary.badges.filter((b) => b.earnedAt).map((b) => ({ id: b.id, label: b.label, count: b.count })),
+    projects: shown.map((p) => {
+      const members = counts.get(p.id) ?? 1;
+      return {
+        id: p.id,
+        title: p.title,
+        startedAt: p.startedAt,
+        deadlineAt: p.deadlineAt,
+        members,
+        role: members === 1 ? 'solo' : p.role === 'owner' ? 'owner' : 'member',
+        grade: p.grade,
+      };
+    }),
+    experiences: experiences
+      .filter((e) => e.valid && !s.hiddenExperiences.includes(e.id))
+      .map((e) => ({
+        id: e.id,
+        projectTitle: e.project_title,
+        title: e.task_title,
+        bullet: e.resume_bullet,
+        skills: e.skill_ids,
+        evidence: s.shownEvidence.includes(e.id) ? e.evidence : null,
+      })),
+  };
 }
