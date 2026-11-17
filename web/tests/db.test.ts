@@ -105,7 +105,8 @@ void test('기준 마이그레이션: 두 번 실행해도 한 번만, 모든 �
     .prepare("SELECT c.relname AS name, c.relrowsecurity AS rls FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r'")
     .all<{ name: string; rls: boolean }>();
   // 통합 앱, 동료 평가, 학습 확인과 프로필 저장 선점을 포함해 모든 테이블의 RLS를 확인한다.
-  assert.equal(tables.results.length, 44);
+  assert.equal(tables.results.length, 47);
+  assert.ok(['profile_scores', 'public_profiles', 'public_profile_events'].every((n) => tables.results.some((t) => t.name === n)));
   assert.ok(['github_accounts', 'github_link_events'].every((n) => tables.results.some((t) => t.name === n)));
   assert.ok(
     ['project_repos', 'project_repo_events', 'source_issue_spans'].every((n) => tables.results.some((t) => t.name === n)),

@@ -21,7 +21,7 @@ await build({
   packages: 'external',
   alias: { '@': process.cwd() },
 });
-const { MySummary, ActivityPanel, SettingsPanel, ExperienceBoard, studyCalendar, stateLabel } = await import(
+const { MySummary, ActivityPanel, SettingsPanel, ExperienceBoard, ShareSheet, PublicProfileSettings, studyCalendar, stateLabel } = await import(
   pathToFileURL(outfile).href
 );
 const now = new Date('2026-11-17T03:00:00Z'); // 서울 11월 17일 정오
@@ -35,6 +35,7 @@ const badge = (id, label, earned, count = earned ? 1 : 0) => ({
 const score = {
   bestGrade: 'A',
   average: 4.4,
+  profile: { score: 4.4, grade: 'A', percentile: 12, total: 40, computedAt: '2026-11-16T18:00:00Z' },
   projects: 2,
   totalScore: 8.8,
   badges: [badge('finish', '7일 완주', true, 2), badge('top_communicator', '소통왕', false)],
@@ -63,23 +64,32 @@ void test('프로젝트 상태 문구: 준비·진행(DAY)·완주·기한 종�
   assert.equal(stateLabel({ lifecycle: 'draft', startedAt: null }, now), '준비 중');
 });
 
-void test('요약: 이름, 최고 등급, 연속 학습·학습한 날·완주·평균', () => {
+void test('요약: 이름, 프로필 등급·상위 %·기준 시각, 연속 학습·학습한 날·완주·프로필 점수, 공유 버튼', () => {
   const html = renderToString(
     createElement(MySummary, { name: '지원자', target: '프론트엔드 개발', score, stats: { streak: 5, days: 23 } }),
   );
   assert.match(html, /지원자/);
   assert.match(html, /프론트엔드 개발/);
-  assert.match(html, /<b>A<\/b>[\s\S]*최고 등급/);
+  assert.match(html, /<b>A<\/b>[\s\S]*프로필 등급/);
+  assert.match(html, /상위 12%/);
+  assert.match(html, /11월 17일 03:00 기준/);
+  assert.match(html, /<button[^>]*>내 프로필 공유<\/button>/);
   assert.match(html, /연속 학습<\/dt><dd>5일/);
   assert.match(html, /학습한 날<\/dt><dd>23일/);
   assert.match(html, /완주한 프로젝트<\/dt><dd>1개/);
-  assert.match(html, /동료평가 평균 \(5점\)<\/dt><dd>4\.4/);
+  assert.match(html, /프로필 점수 \(5점\)<\/dt><dd>4\.4/);
+  assert.doesNotMatch(html, /최고 등급/);
 });
 
-void test('요약: 점수를 아직 못 불러왔거나 평가가 없으면 E 등급·평균 없음', () => {
+void test('요약: 저장값이 없으면 E·점수 없음·새벽 계산 안내, 점수 없으면 상위 % 안내', () => {
   const html = renderToString(createElement(MySummary, { name: '새 사용자', target: '', score: null, stats: { streak: 0, days: 0 } }));
   assert.match(html, /<b>E<\/b>/);
-  assert.match(html, /동료평가 평균 \(5점\)<\/dt><dd>—/);
+  assert.match(html, /프로필 점수 \(5점\)<\/dt><dd>—/);
+  assert.match(html, /매일 새벽에 계산돼요/);
+  const unscored = renderToString(
+    createElement(MySummary, { name: '새 사용자', target: '', score: { ...score, profile: { ...score.profile, score: null, grade: 'E', percentile: null } }, stats: { streak: 0, days: 0 } }),
+  );
+  assert.match(unscored, /평가를 받으면 상위 %가 나와요/);
   assert.match(html, /완주한 프로젝트<\/dt><dd>0개/);
 });
 
@@ -195,4 +205,37 @@ void test('경험·포트폴리오: 프로젝트 경험과 직접 추가 자료�
   assert.match(mine, /동아리 출석 앱/);
   const empty = renderToString(createElement(ExperienceBoard, { ...props, experiences: [], pending: [], portfolios: [] }));
   assert.match(empty, /프로젝트를 끝내고 완료 근거를 남기면/);
+});
+
+void test('공유 시트: 꺼져 있으면 설정으로 안내, 켜져 있으면 카드 미리보기·저장·링크·프로필 보기', () => {
+  const off = renderToString(createElement(ShareSheet, { handle: null, enabled: false, onSettings: () => {}, onClose: () => {} }));
+  assert.match(off, /공개 프로필을 켜면 공유할 수 있어요/);
+  assert.match(off, /<button[^>]*>설정에서 켜기<\/button>/);
+  assert.doesNotMatch(off, /<img/);
+  const on = renderToString(createElement(ShareSheet, { handle: 'harin', enabled: true, onSettings: () => {}, onClose: () => {} }));
+  assert.match(on, /<img[^>]*src="\/u\/harin\/card"/);
+  assert.match(on, /href="\/u\/harin\/card"[^>]*download[^>]*>이미지 저장|download[^>]*href="\/u\/harin\/card"[^>]*>이미지 저장/);
+  assert.match(on, /<button[^>]*>링크 공유<\/button>/);
+  assert.match(on, /href="\/u\/harin"[^>]*>프로필 보기/);
+});
+
+void test('공개 프로필 설정: 켜기·아이디·이름, GitHub 미연결이면 비활성, 프로젝트·업무 숨김과 근거 보이기', () => {
+  const data = {
+    settings: null,
+    defaults: { displayName: '하린' },
+    github: null,
+    projects: [{ id: 'p1', title: '동네 가게 예약 페이지' }],
+    experiences: [{ id: 'e1', title: '예약 API', projectTitle: '동네 가게 예약 페이지' }],
+  };
+  const html = renderToString(createElement(PublicProfileSettings, { data, busy: false, error: '', onSave: async () => {} }));
+  assert.match(html, /공개 프로필 켜기/);
+  assert.match(html, /value="하린"/);
+  assert.match(html, /\/u\//);
+  assert.match(html, /<input[^>]*type="checkbox"[^>]*disabled=""[^>]*>[^<]*GitHub 아이디 보이기|GitHub 아이디 보이기[\s\S]*연결된 GitHub이 없어요/);
+  // GitHub 연결 카드는 이 양식 위에 있다.
+  assert.match(html, /위 GitHub 카드에서 연결할 수 있어요/);
+  assert.match(html, /동네 가게 예약 페이지/);
+  assert.match(html, /예약 API[\s\S]*완료 근거 보이기/);
+  const err = renderToString(createElement(PublicProfileSettings, { data, busy: false, error: '이미 쓰는 아이디예요.', onSave: async () => {} }));
+  assert.match(err, /role="alert"[^>]*>이미 쓰는 아이디예요\./);
 });

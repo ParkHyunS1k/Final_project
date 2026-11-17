@@ -3,6 +3,7 @@ import { test } from 'node:test';
 process.env.AUTH_DEV_HEADERS = '1';
 // 테스트는 과거로 옮긴 프로젝트를 쓰므로 제재 시작 시각을 아주 이르게 둔다.
 process.env.SANCTION_FROM = '2000-01-01T00:00:00Z';
+process.env.CRON_SECRET = 'test-cron';
 import assert from 'node:assert/strict';
 import { setupTestDb } from './helpers/pg-db.mjs';
 import { build } from 'esbuild';
@@ -15,7 +16,7 @@ const outfile = join(mkdtempSync(join(tmpdir(), 'projectmate-score-test-')), 'ro
 await build({
   stdin: {
     contents:
-      "export { GET as sprintGET, POST as sprintPOST } from './app/api/sprint/route'; export { GET as projectsGET, POST as projectsPOST } from './app/api/projects/route'; export { GET as scoreGET, POST as scorePOST } from './app/api/score/route'; export { GET as meGET } from './app/api/score/me/route'; export { POST as teamsPOST } from './app/api/teams/route'; export { POST as hubPOST } from './app/api/hub/route';",
+      "export { GET as sprintGET, POST as sprintPOST } from './app/api/sprint/route'; export { GET as projectsGET, POST as projectsPOST } from './app/api/projects/route'; export { GET as scoreGET, POST as scorePOST } from './app/api/score/route'; export { GET as meGET } from './app/api/score/me/route'; export { POST as teamsPOST } from './app/api/teams/route'; export { POST as hubPOST } from './app/api/hub/route'; export { GET as cronGET } from './app/api/internal/profile-scores/route';",
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -283,6 +284,41 @@ test('완주한 팀: 기간 중 1회 제출, 익명 평균은 공개 뒤에만, 
   assert.equal(row.grade, 'A');
   assert.ok(Date.parse(row.startedAt) && Date.parse(row.deadlineAt));
   assert.equal((await me('m1')).history.find((p) => p.id === projectId).grade, 'S');
+
+  // 프로필 점수: 매일 일괄 계산 전에는 없고, 계산 뒤 저장값으로 등급·상위 %가 나온다.
+  assert.equal((await me('lead')).profile, null);
+  const cron = (auth) =>
+    api.cronGET(
+      new Request('https://test.local/api/internal/profile-scores', {
+        headers: auth ? { authorization: auth } : {},
+      }),
+    );
+  assert.equal((await cron()).status, 401);
+  assert.equal((await cron('Bearer wrong')).status, 401);
+  const ran = await cron('Bearer test-cron');
+  assert.equal(ran.status, 200, await ran.clone().text());
+  assert.ok((await ran.json()).users >= 4);
+  const p = (await me('lead')).profile;
+  assert.equal(p.score, 4.5);
+  assert.equal(p.grade, 'A');
+  assert.ok(Date.parse(p.computedAt));
+  assert.equal(p.total, 3); // m1 4.8, lead 4.5, m2 3.5. 참여 중단한 m3는 점수 없음
+  assert.equal(p.percentile, 34); // 3명 중 2등
+  assert.equal((await me('m1')).profile.percentile, 1);
+  const left = (await me('m3')).profile;
+  assert.equal(left.score, null);
+  assert.equal(left.grade, 'E');
+  assert.equal(left.percentile, null);
+  // 같은 점수는 같은 상위 %.
+  await run("UPDATE profile_scores SET score=4.5 WHERE user_id='m2'");
+  assert.equal((await me('m2')).profile.percentile, (await me('lead')).profile.percentile);
+  // 다른 산정식 버전의 저장값은 비교에서 빠진다.
+  await run("UPDATE profile_scores SET formula_version='v0' WHERE user_id='m2'");
+  assert.equal((await me('lead')).profile.total, 2);
+  assert.equal((await me('m2')).profile, null);
+  // 다음 일괄 계산이 다시 맞춘다.
+  assert.equal((await cron('Bearer test-cron')).status, 200);
+  assert.equal((await me('m2')).profile.score, 3.5);
   assert.equal(row.left, false);
   // 참여 중단한 프로젝트는 표시하되 중단으로 알린다(개인 완주 수에서 뺀다).
   assert.equal((await me('m3')).history.find((p) => p.id === projectId).left, true);
@@ -591,6 +627,13 @@ test('내지 않은 사람은 결과가 가려지고 팀 뱃지는 보인다', a
   const summary = await me('y3c');
   assert.equal(summary.projects, 0);
   assert.equal(summary.bestGrade, 'E');
+  // 프로필 점수도 가려진 결과를 넣지 않는다.
+  const cronRun = await api.cronGET(
+    new Request('https://test.local/api/internal/profile-scores', { headers: { authorization: 'Bearer test-cron' } }),
+  );
+  assert.equal(cronRun.status, 200);
+  assert.equal((await me('y3c')).profile.score, null);
+  assert.equal((await me('y3a')).profile.score, 5);
 });
 
 test('참여 중단자는 전원 제출 판정에서 빠진다', async () => {

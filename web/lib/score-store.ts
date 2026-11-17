@@ -2,7 +2,7 @@
 // docs/superpowers/specs/2026-10-20-peer-score-badges-design.md.
 // 본인 결과만 돌려준다. 다른 사람의 점수·개별 평가·평가 시각은 내보내지 않는다.
 import { database, readSprint, readPolicy, readMembers, currentPlan, Conflict } from './sprint-store';
-import { member, listProjects, type Identity } from './projects';
+import { member, listProjects, projectRows, type Identity } from './projects';
 import { PolicyError } from './sprint-policy';
 import {
   badgeList,
@@ -139,9 +139,16 @@ export async function readScore(projectId: string, user: Identity, now = new Dat
 
 /** GET /api/score/me. 내가 속한 프로젝트 전체의 확정 점수·최고 등급·뱃지. */
 export async function readMyScore(user: Identity, now = new Date()) {
-  const projects = await listProjects(user);
+  // 이전 기록 가져오기는 로그인한 본인 조회에서만 한다.
+  await listProjects(user);
+  return scoreSummary(user.id, now);
+}
+
+/** 한 사용자의 확정 점수·최고 등급·뱃지·프로젝트 기록. 일괄 계산과 공개 프로필도 쓴다. */
+export async function scoreSummary(userId: string, now = new Date()) {
+  const projects = await projectRows(userId);
   const scores: Awaited<ReturnType<typeof projectScore>>[] = [];
-  for (const p of projects) scores.push(await projectScore(String(p.id), user.id, now));
+  for (const p of projects) scores.push(await projectScore(String(p.id), userId, now));
   const me = summarize(scores);
   return {
     ...me,
