@@ -118,11 +118,15 @@ export function actorOf(row: MemberRow): Actor {
 }
 export async function listProjects(user: Identity) {
   await adoptLegacy(user);
+  return projectRows(user.id);
+}
+/** 사용자의 프로젝트(떠난 것 포함). 이전 기록 가져오기는 하지 않는다(일괄 계산·공개 프로필용). */
+export async function projectRows(userId: string) {
   const result = await database()
     .prepare(
       'SELECT s.owner AS id,s.title,s.revision,m.role,m.left_at,p.lifecycle,p.started_at,p.deadline_at,p.duration_days FROM sprints s JOIN project_members m ON m.project_id=s.owner LEFT JOIN project_policy p ON p.project_id=s.owner WHERE m.user_id=? ORDER BY s.updated_at DESC,s.owner',
     )
-    .bind(user.id)
+    .bind(userId)
     .all<{
       id: string;
       title: string;
