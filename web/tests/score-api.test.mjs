@@ -299,26 +299,27 @@ test('완주한 팀: 기간 중 1회 제출, 익명 평균은 공개 뒤에만, 
   assert.equal(ran.status, 200, await ran.clone().text());
   assert.ok((await ran.json()).users >= 4);
   const p = (await me('lead')).profile;
-  assert.equal(p.score, 4.5);
+  // v2: 평가(3.5로 보정) 70% + 완주율 30% + 완주 0.05. 평가 m1 4.8, lead 4.5, m2 3.5.
+  assert.equal(p.score, 4.4); // (4.5+3.5)/2*0.7 + 1.5 + 0.05 = 4.35
   assert.equal(p.grade, 'A');
   assert.ok(Date.parse(p.computedAt));
-  assert.equal(p.total, 3); // m1 4.8, lead 4.5, m2 3.5. 참여 중단한 m3는 점수 없음
-  assert.equal(p.percentile, 34); // 3명 중 2등
+  assert.equal(p.total, 4); // m1 4.5, lead 4.4, m2 4.0, 시작 뒤 참여 중단한 m3 2.5(실패 1개)
+  assert.equal(p.percentile, 25); // 4명 중 2등
   assert.equal((await me('m1')).profile.percentile, 1);
   const left = (await me('m3')).profile;
-  assert.equal(left.score, null);
-  assert.equal(left.grade, 'E');
-  assert.equal(left.percentile, null);
+  assert.equal(left.score, 2.5);
+  assert.equal(left.grade, 'C');
+  assert.equal(left.percentile, 75);
   // 같은 점수는 같은 상위 %.
-  await run("UPDATE profile_scores SET score=4.5 WHERE user_id='m2'");
+  await run("UPDATE profile_scores SET score=4.4 WHERE user_id='m2'");
   assert.equal((await me('m2')).profile.percentile, (await me('lead')).profile.percentile);
   // 다른 산정식 버전의 저장값은 비교에서 빠진다.
   await run("UPDATE profile_scores SET formula_version='v0' WHERE user_id='m2'");
-  assert.equal((await me('lead')).profile.total, 2);
+  assert.equal((await me('lead')).profile.total, 3);
   assert.equal((await me('m2')).profile, null);
   // 다음 일괄 계산이 다시 맞춘다.
   assert.equal((await cron('Bearer test-cron')).status, 200);
-  assert.equal((await me('m2')).profile.score, 3.5);
+  assert.equal((await me('m2')).profile.score, 4);
   assert.equal(row.left, false);
   // 참여 중단한 프로젝트는 표시하되 중단으로 알린다(개인 완주 수에서 뺀다).
   assert.equal((await me('m3')).history.find((p) => p.id === projectId).left, true);
@@ -627,13 +628,13 @@ test('내지 않은 사람은 결과가 가려지고 팀 뱃지는 보인다', a
   const summary = await me('y3c');
   assert.equal(summary.projects, 0);
   assert.equal(summary.bestGrade, 'E');
-  // 프로필 점수도 가려진 결과를 넣지 않는다.
+  // 프로필 점수도 가려진 결과를 넣지 않고, 가려진 프로젝트는 완주로 세지 않는다(v2).
   const cronRun = await api.cronGET(
     new Request('https://test.local/api/internal/profile-scores', { headers: { authorization: 'Bearer test-cron' } }),
   );
   assert.equal(cronRun.status, 200);
-  assert.equal((await me('y3c')).profile.score, null);
-  assert.equal((await me('y3a')).profile.score, 5);
+  assert.equal((await me('y3c')).profile.score, 2.5); // 3.5*0.7, 완주 0
+  assert.equal((await me('y3a')).profile.score, 4.5); // (5+3.5)/2*0.7 + 1.5 + 0.05
 });
 
 test('참여 중단자는 전원 제출 판정에서 빠진다', async () => {

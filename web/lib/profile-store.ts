@@ -32,7 +32,7 @@ export async function refreshAllProfileScores(now = new Date()) {
   // ponytail: 사용자별 순차 계산. 사용자가 많아져 시간이 모자라면 묶음 병렬로 바꾼다.
   const writes = [];
   for (const { user_id } of users.results) {
-    const score = profileScore((await scoreSummary(user_id, now)).history);
+    const score = profileScore((await scoreSummary(user_id, now)).history, now);
     writes.push(
       db
         .prepare(
