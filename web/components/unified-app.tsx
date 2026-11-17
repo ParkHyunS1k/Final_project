@@ -21,7 +21,9 @@ import {
   ActivityPanel,
   ExperienceBoard,
   MySummary,
+  PublicProfileSettings,
   SettingsPanel,
+  ShareSheet,
   type ExperienceFilter,
   type MyScore,
   type PendingTask,
@@ -89,8 +91,11 @@ type MyData = {
   score: MyScore | null;
   restriction: RestrictionView | null | undefined;
   pendingRequests: number | null;
+  /** 공개 프로필 설정(GET /api/profile). 불러오지 못하면 null. */
+  publicProfile: ProfileData | null;
   failed: boolean;
 };
+type ProfileData = Parameters<typeof PublicProfileSettings>[0]['data'];
 type CareerData = {
   experiences: Parameters<typeof ExperienceBoard>[0]['experiences'];
   pending: PendingTask[];
@@ -103,10 +108,11 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
 }
 async function loadMy(signal?: AbortSignal): Promise<MyData> {
   // 하나가 실패해도 나머지는 보인다.
-  const [score, projects, teams] = await Promise.allSettled([
+  const [score, projects, teams, publicProfile] = await Promise.allSettled([
     getJson<MyScore>('/api/score/me', signal),
     getJson<{ restriction: RestrictionView | null }>('/api/projects', signal),
     getJson<{ requests: { status: string }[] }>('/api/teams', signal),
+    getJson<ProfileData>('/api/profile', signal),
   ]);
   return {
     score: score.status === 'fulfilled' ? score.value : null,
@@ -116,7 +122,8 @@ async function loadMy(signal?: AbortSignal): Promise<MyData> {
       teams.status === 'fulfilled'
         ? teams.value.requests.filter((r) => r.status === 'pending').length
         : null,
-    failed: [score, projects, teams].some((r) => r.status === 'rejected'),
+    publicProfile: publicProfile.status === 'fulfilled' ? publicProfile.value : null,
+    failed: [score, projects, teams, publicProfile].some((r) => r.status === 'rejected'),
   };
 }
 const loadCareer = (signal?: AbortSignal) =>
@@ -224,10 +231,15 @@ function ProjectTime({
 export function UnifiedApp({
   initialTab,
   projectId,
+  initialShare = false,
 }: {
   initialTab: string;
   projectId: string;
+  /** 주소에 share=1이 있으면 마이페이지 공유 시트를 처음부터 연다(결과 화면 링크). */
+  initialShare?: boolean;
 }) {
+  const [shareOpen, setShareOpen] = useState(initialShare);
+  const [profileError, setProfileError] = useState('');
   const [tab, setTab] = useState<Tab>(tabFrom(initialTab));
   const [selectedProject, setSelectedProject] = useState(projectId);
   // 홈에서 프로젝트 화면이 스스로 고른 프로젝트. 주소에 project가 있으면 그쪽이 우선이다.
@@ -601,7 +613,19 @@ export function UnifiedApp({
                 }
                 score={my?.score ?? null}
                 stats={data?.stats ?? { streak: 0, days: 0 }}
+                onShare={() => setShareOpen(true)}
               />
+              {shareOpen && (
+                <ShareSheet
+                  handle={my?.publicProfile?.settings?.handle ?? null}
+                  enabled={Boolean(my?.publicProfile?.settings?.enabled)}
+                  onSettings={() => {
+                    setShareOpen(false);
+                    navigate('settings');
+                  }}
+                  onClose={() => setShareOpen(false)}
+                />
+              )}
               <nav className="hub-tabs" aria-label="마이페이지 메뉴">
                 {PERSONAL.map((p) => (
                   <button
@@ -1256,6 +1280,34 @@ export function UnifiedApp({
               loading={!my}
               busy={busy}
               onSignOut={() => void act(signOut)}
+            />
+          )}
+          {tab === 'settings' && my?.publicProfile && (
+            <PublicProfileSettings
+              key={my.publicProfile.settings?.version ?? 0}
+              data={my.publicProfile}
+              busy={busy}
+              error={profileError}
+              onSave={async (next) => {
+                setBusy(true);
+                setProfileError('');
+                try {
+                  const response = await apiFetch('/api/profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'save', ...next }),
+                  });
+                  const result = await response.json();
+                  if (!response.ok)
+                    throw new Error(result.error || '공개 프로필을 저장하지 못했어요.');
+                  setNotice('공개 프로필을 저장했어요.');
+                  setMyRetry((n) => n + 1);
+                } catch (e) {
+                  setProfileError((e as Error).message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
             />
           )}
           {(tab === 'profile' || tab === 'team') && (

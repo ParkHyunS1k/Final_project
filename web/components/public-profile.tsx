@@ -3,21 +3,12 @@
 import { skillName } from '@/lib/career/catalog';
 import { studyCalendar } from '@/lib/study-calendar';
 import type { PublicProfile } from '@/lib/profile-store';
+import { basisLabel } from '@/lib/profile-score';
 
 const HOME_HREF = '/';
 const ROLE = { owner: '팀장', member: '팀원', solo: '솔로' } as const;
 const day = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric' }) : '';
-export const basisLabel = (iso: string) =>
-  new Date(iso).toLocaleString('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }) + ' 기준';
-
 export function PublicProfileView({ profile, now }: { profile: PublicProfile; now: Date }) {
   const s = profile.standing;
   const cells = studyCalendar(profile.dates, now);

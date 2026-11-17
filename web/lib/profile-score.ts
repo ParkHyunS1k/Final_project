@@ -20,3 +20,17 @@ export function profileGrade(score: number | null): ProfileGrade {
 export function topPercent(rank: number, total: number): number {
   return Math.max(1, Math.ceil(((rank - 1) / total) * 100));
 }
+
+/** 일괄 계산 시각 → "11월 17일 03:00 기준"(서울). */
+export function basisLabel(iso: string) {
+  return (
+    new Date(iso).toLocaleString('ko-KR', {
+      timeZone: 'Asia/Seoul',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }) + ' 기준'
+  );
+}

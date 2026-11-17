@@ -10,6 +10,9 @@ import { sprintDay } from '@/lib/race';
 import { studyCalendar } from '@/lib/study-calendar';
 export { studyCalendar };
 import { restrictionMessage, type Grade, type RestrictionView } from '@/lib/score';
+import { basisLabel, type ProfileGrade } from '@/lib/profile-score';
+import type { ProfileStanding, ProfileSettings, readProfileSettings } from '@/lib/profile-store';
+import { useState } from 'react';
 
 export type HistoryRow = {
   id: string;
@@ -25,6 +28,8 @@ export type HistoryRow = {
 };
 export type MyScore = {
   bestGrade: Grade | 'E';
+  /** 매일 일괄 계산한 프로필 점수(없으면 null). 마이페이지·카드·공개 프로필이 같은 값을 쓴다. */
+  profile?: ProfileStanding | null;
   average: number | null;
   badges: { id: string; label: string; description: string; earnedAt: string | null; count: number }[];
   history: HistoryRow[];
@@ -69,12 +74,16 @@ export function MySummary({
   target,
   score,
   stats,
+  onShare,
 }: {
   name: string;
   target: string;
   score: MyScore | null;
   stats: { streak: number; days: number };
+  onShare?: () => void;
 }) {
+  const p = score?.profile ?? null;
+  const grade: ProfileGrade = p?.grade ?? 'E';
   const finished = score?.history.filter((p) => p.lifecycle === 'completed' && !p.left).length ?? 0;
   return (
     <section className="my-summary" aria-label="내 요약">
@@ -87,9 +96,18 @@ export function MySummary({
           <p>{target ? `${target} 목표` : '목표 직무를 이력서·역량에서 정할 수 있어요'}</p>
         </div>
         <div className="my-grade">
-          <b>{score?.bestGrade ?? 'E'}</b>
-          <span>최고 등급</span>
+          <b>{grade}</b>
+          <span>프로필 등급</span>
         </div>
+      </div>
+      <div className="my-standing">
+        <span className="my-top">
+          {p?.percentile != null ? `상위 ${p.percentile}%` : '평가를 받으면 상위 %가 나와요'}
+        </span>
+        <span className="my-meta">{p ? basisLabel(p.computedAt) : '매일 새벽에 계산돼요'}</span>
+        <button type="button" className="btn primary" onClick={onShare}>
+          내 프로필 공유
+        </button>
       </div>
       <dl className="my-stats">
         <div className="hot">
@@ -105,8 +123,8 @@ export function MySummary({
           <dd>{`${finished}개`}</dd>
         </div>
         <div>
-          <dt>동료평가 평균 (5점)</dt>
-          <dd>{score?.average ?? '—'}</dd>
+          <dt>프로필 점수 (5점)</dt>
+          <dd>{p?.score ?? '—'}</dd>
         </div>
       </dl>
     </section>
@@ -403,5 +421,161 @@ export function SettingsPanel({
       </section>
       <GithubLink />
     </div>
+  );
+}
+
+/** 내 프로필 공유: 공개를 켜야 카드·링크가 생긴다. */
+export function ShareSheet({
+  handle,
+  enabled,
+  onSettings,
+  onClose,
+}: {
+  handle: string | null;
+  enabled: boolean;
+  onSettings: () => void;
+  onClose: () => void;
+}) {
+  const [status, setStatus] = useState('');
+  const path = handle ? `/u/${handle}` : '';
+  const card = `${path}/card`;
+  async function share() {
+    const url = location.origin + path;
+    try {
+      if (navigator.share) await navigator.share({ title: 'ProjectMate 프로필', url });
+      else {
+        await navigator.clipboard.writeText(url);
+        setStatus('링크를 복사했어요.');
+      }
+    } catch {
+      setStatus(`복사하지 못했어요. 이 주소를 직접 복사해 주세요: ${url}`);
+    }
+  }
+  return (
+    <section className="hub-card my-share" aria-label="내 프로필 공유">
+      <div className="my-card-head">
+        <h3>내 프로필 공유</h3>
+        <button type="button" className="btn" onClick={onClose}>
+          닫기
+        </button>
+      </div>
+      {!enabled || !handle ? (
+        <div className="my-share-off">
+          <p>공개 프로필을 켜면 공유할 수 있어요. 아이디를 정하고 공개를 켜 주세요.</p>
+          <button type="button" className="btn primary" onClick={onSettings}>
+            설정에서 켜기
+          </button>
+        </div>
+      ) : (
+        <div className="my-share-on">
+          {/* 서버가 만든 PNG라 next/image 최적화를 거치지 않는다. */}
+          {/* eslint-disable-next-line @next/next/no-img-element -- 서버가 만든 카드 PNG 미리보기 */}
+          <img src={card} alt="내 프로필 카드 미리보기" width={216} height={384} />
+          <div className="hub-actions">
+            <a className="btn primary" href={card} download>
+              이미지 저장
+            </a>
+            <button type="button" className="btn" onClick={() => void share()}>
+              링크 공유
+            </button>
+            <a className="btn" href={path} target="_blank" rel="noopener noreferrer">
+              프로필 보기
+            </a>
+          </div>
+          {status && <output className="my-meta">{status}</output>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+type ProfileData = Awaited<ReturnType<typeof readProfileSettings>>;
+
+/** 공개 프로필 설정(설정 탭). 저장하면 version으로 동시 변경을 막는다. */
+export function PublicProfileSettings({
+  data,
+  busy,
+  error,
+  onSave,
+}: {
+  data: ProfileData;
+  busy: boolean;
+  error: string;
+  onSave: (next: Omit<ProfileSettings, 'version'> & { version: number }) => Promise<void>;
+}) {
+  const s = data.settings;
+  const [enabled, setEnabled] = useState(s?.enabled ?? false);
+  const [handle, setHandle] = useState(s?.handle ?? '');
+  const [displayName, setDisplayName] = useState(s?.displayName ?? data.defaults.displayName);
+  const [showGithub, setShowGithub] = useState(s?.showGithub ?? false);
+  const [hiddenProjects, setHiddenProjects] = useState<string[]>(s?.hiddenProjects ?? []);
+  const [hiddenExperiences, setHiddenExperiences] = useState<string[]>(s?.hiddenExperiences ?? []);
+  const [shownEvidence, setShownEvidence] = useState<string[]>(s?.shownEvidence ?? []);
+  const flip = (list: string[], id: string) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+  return (
+    <form
+      className="hub-card my-public"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void onSave({ version: s?.version ?? 0, enabled, handle, displayName, showGithub, hiddenProjects, hiddenExperiences, shownEvidence });
+      }}
+    >
+      <h3>공개 프로필</h3>
+      <p className="my-meta">켜면 누구나 /u/아이디 주소로 내 등급·뱃지·완주한 프로젝트·확인한 업무를 볼 수 있어요. 팀원 이름과 점수는 보이지 않아요.</p>
+      <fieldset disabled={busy}>
+        <label className="my-check">
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+          공개 프로필 켜기
+        </label>
+        <label>
+          아이디 <span className="my-meta">{`주소: /u/${handle.trim().toLowerCase() || '아이디'}`}</span>
+          <input value={handle} onChange={(e) => setHandle(e.target.value)} maxLength={20} placeholder="영문 소문자·숫자·-·_ 3~20자" required />
+        </label>
+        <label>
+          프로필 이름
+          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={30} required />
+        </label>
+        <label className="my-check">
+          <input type="checkbox" checked={showGithub && Boolean(data.github)} disabled={!data.github} onChange={(e) => setShowGithub(e.target.checked)} />
+          GitHub 아이디 보이기
+          <span className="my-meta">{data.github ? `@${data.github}` : '연결된 GitHub이 없어요. 아래에서 연결할 수 있어요.'}</span>
+        </label>
+        {!!data.projects.length && (
+          <div className="my-pick">
+            <b>보일 프로젝트</b>
+            {data.projects.map((p) => (
+              <label key={p.id} className="my-check">
+                <input type="checkbox" checked={!hiddenProjects.includes(p.id)} onChange={() => setHiddenProjects(flip(hiddenProjects, p.id))} />
+                {p.title}
+              </label>
+            ))}
+          </div>
+        )}
+        {!!data.experiences.length && (
+          <div className="my-pick">
+            <b>보일 업무</b>
+            {data.experiences.map((x) => (
+              <div key={x.id} className="my-pick-row">
+                <label className="my-check">
+                  <input type="checkbox" checked={!hiddenExperiences.includes(x.id)} onChange={() => setHiddenExperiences(flip(hiddenExperiences, x.id))} />
+                  {x.title}
+                  {x.projectTitle && <span className="my-meta">{x.projectTitle}</span>}
+                </label>
+                <label className="my-check">
+                  <input type="checkbox" checked={shownEvidence.includes(x.id)} onChange={() => setShownEvidence(flip(shownEvidence, x.id))} />
+                  완료 근거 보이기
+                </label>
+              </div>
+            ))}
+          </div>
+        )}
+        {error && (
+          <p className="my-error" role="alert">
+            {error}
+          </p>
+        )}
+        <button className="btn primary">저장</button>
+      </fieldset>
+    </form>
   );
 }
