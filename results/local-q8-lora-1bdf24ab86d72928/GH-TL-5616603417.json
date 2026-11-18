@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-5616603417",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q8_0.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "1bdf24ab86d72928",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T20:35:06.733165+00:00",
+  "elapsed_seconds": 1.881,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "a4810c5a642bceaf984e2d774abfb042dbf0ebed15c36b26f6bc59c6d73fe843",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 2279,
+    "cached_input_tokens": 0,
+    "output_tokens": 102,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-5616603417",
+    "summary_ko": "동시성 리뷰에서 msg_id 바인딩과 원장 예약·기록의 원자성 문제가 확인됐고, 회귀 테스트 및 수정 SHA 전달 요청이 있습니다. 작업 전체의 완료나 명시적인 착수 보고는 없어 상태 변경을 제안하지 않습니다.",
+    "decision": "no_change",
+    "clarification_reason_ko": null,
+    "changes": []
+  },
+  "parse_error": null
+}

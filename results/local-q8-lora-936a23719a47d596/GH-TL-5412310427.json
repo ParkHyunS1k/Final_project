@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-5412310427",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q8_0.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "936a23719a47d596",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T20:46:10.528429+00:00",
+  "elapsed_seconds": 2.275,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "00211e0ac79c47169f174ee0db52aad77dcf659846c4bb6ec9971c2b2fd257a6",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1881,
+    "cached_input_tokens": 0,
+    "output_tokens": 144,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-5412310427",
+    "summary_ko": "Next.js 업그레이드와 lockfile 재생성은 완료됐지만 Vercel 배포 로그 확인이 남아 있어 전체 작업 완료로 판단할 수 없습니다. Vercel 접근 권한이 있는 분의 확인이 조건부이므로 완료 처리는 제안하지 않습니다.",
+    "decision": "needs_clarification",
+    "clarification_reason_ko": "Vercel 배포 로그 확인이 남아 있어 이슈 전체가 완료됐는지는 확인되지 않습니다. 해당 권한을 가진 팀원의 확인이 필요한지, 그 확인까지 포함해 완료 처리할지 확인이 필요합니다.",
+    "changes": []
+  },
+  "parse_error": null
+}

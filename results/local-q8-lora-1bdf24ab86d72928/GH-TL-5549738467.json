@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-5549738467",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q8_0.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "1bdf24ab86d72928",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T20:34:18.282604+00:00",
+  "elapsed_seconds": 2.347,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "de3f3208f4e1157a57cd8a5bc518dc7cebb06df51b2f38e90d66ef1436e71365",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1156,
+    "cached_input_tokens": 0,
+    "output_tokens": 158,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-5549738467",
+    "summary_ko": "문서 정리와 실제 제보 승인·자동 재판정 E2E는 완료됐지만, 이슈와 프로젝트는 진행 중으로 유지됩니다. 배치 실행 후 좌표·주소 보존과 실제 수신 여부를 확인하고, 수신되지 않았을 경우 보호 실증 완료를 확인해야 합니다.",
+    "decision": "needs_clarification",
+    "clarification_reason_ko": "일부 작업의 완료만 보고되어 전체 작업 완료로 판단할 수 없습니다. 배치 실행 후 확인해야 할 좌표·주소 보존과 실제 수신 여부, 그리고 그 결과에 따른 보호 실증 완료 여부를 확인해야 합니다.",
+    "changes": []
+  },
+  "parse_error": null
+}

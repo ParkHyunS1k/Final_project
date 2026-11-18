@@ -18,8 +18,9 @@ def main():
     p.add_argument("--a", type=c.Path, action="append", required=True)
     p.add_argument("--b", type=c.Path, action="append", required=True)
     p.add_argument("--answer-key", choices=("claude", "gpt"), default="claude")
+    p.add_argument("--baseline", default="sol-low", help="GPT 답안지로 쓸 저장된 결과 (예: sol61-low)")
     args = p.parse_args()
-    baseline = c.load(c.TL / "results" / "sol-low")
+    baseline = c.load(c.TL / "results" / args.baseline)
     labels = c.gpt_key(baseline) if args.answer_key == "gpt" else c.LABELS
 
     def cases(d):

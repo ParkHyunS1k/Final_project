@@ -32,6 +32,7 @@ VARIANTS = {
     "luna-medium": ("gpt-5.6-luna", "medium"),
     "terra-low": ("gpt-5.6-terra", "low"),
     "sol-low": ("gpt-5.6-sol", "low"),
+    "sol61-low": ("gpt-6.1-sol", "low"),  # 앱 운영 모델·기본 effort와 같게 (2026-11-19)
     "local": ("local", None),
 }
 LOCAL_SAMPLING = {"temperature": 0, "seed": 7, "max_tokens": 1024}

@@ -1,32 +1,9 @@
 # 공개하지 않은 파일의 sha256. 어댑터는 데스크톱 C:\train\<run>\, 데이터는 evals/local-model/out/ (로컬 전용)
-## adapters (LoRA GGUF f16, 40.5MB each)
-e4953d71d480fbaebab941d5ed2c6b31348461422fc2e6ab3eb9760a38bff23e  C:\train\run1\adapter.gguf
-8c03eaa51890fdc031ef84011156dd1e37520225c116615fe005346825d38a61  C:\train\run2\adapter-e2.gguf
-518d08100e8bd6d64275f85b347e000c9a2e0d52aad0455bdfd8be162224300e  C:\train\run3\adapter-e1.gguf
-c7efc8803b6a5efb74505177ba9aea1349cf5983dc81992c26379a0e63776864  C:\train\run4\adapter-e3.gguf
-637a5314f4215d4d51f0fceb235e68bf96e84be8a80cc65ab340487c952a3760  C:\train\run5\adapter-e2.gguf
-bb121c14d70d7ac95eac1d13675eaee81a36f75ffd5566fe23c92f35d3a3070d  C:\train\run6\adapter-e2.gguf
-074b7a27d87d978ba32ad558e3aaa774c17c717062c426adde00949cfd09d67e  C:\train\run6s8\adapter-e2.gguf
-9f505a3bfcb8a98e0d224702269d2b2ecfb97fb7071aebf66ff94b3b88bff199  C:\train\run6s9\adapter-e2.gguf
-1386904d458ec1a3edc81358d9da5c413cb6630921738acccd061428b57ca97b  C:\train\run7s7\adapter-e2.gguf
-6b547b146d78f34b97d7db32a6ba110301d2ee80ca018f993038a73e3fdea2a4  C:\train\run7s8\adapter-e2.gguf
-e248c5febb746cca8428a2b641df4f3053e7f98acb0b353ae575d82f3397f1c5  C:\train\run7s9\adapter-e2.gguf
-## training/dev data
-7a898db0e3b7574a0d60aa918f4bd6892ae52c6b616ee91dfadc890d09989cb3  train-all.jsonl
-0b6a993004f455ec3a4f5c277cc5d7387afa5c9edda81ea59571e694af8ef84f  train-messages-1000.jsonl
-79588a1bdc4c4611344c23c416c8d16779318f005d72a99198d0ae29a689c7d5  train-messages-200.jsonl
-7c2f8d4dfdba6cce96704bea5237f0a7293324c15d0a73eef8a4fae11c0632af  train-messages-all.jsonl
-dee6cfb46dd2a492d44652c720bd95172c181615a801fc65123e7f36eff40101  train-messages-bal.jsonl
-c373932b321a86c89a4e14555c625fb99b983f56b600f3243d6b5103329d3c60  train-messages-hard.jsonl
-2b953e49ab1a854dfc79992a586887b1293f092d5f93665a0da783cd81ec2edc  train-messages-noop.jsonl
-acaa6576335a4f9d416e517948951c91ab74da1a4c1a8c292415e479d4f1a624  train-messages.jsonl
-758ef61630ed8bdfdee336245d4a98e572267d876274d6ab35e5889ca46e5ba0  dev-all.jsonl
-8ce7d2a80297ff4a13edad34e818742b63f59e2ed75f01eea59caaee9a36812b  dev-messages-all.jsonl
-8ce7d2a80297ff4a13edad34e818742b63f59e2ed75f01eea59caaee9a36812b  dev-messages.jsonl
-339cb0bc1b8ffe7e51f2ed6813e051293e7bf4f7d490c7052d33ca3db68b014f  queue-dev-observed.jsonl
-6987f199cb5368f3bfc9bf2bc327c186eba0bebfff065d70f62f909143892731  queue-dev.jsonl
-20a84c1f47c81f91d7db68ee440615bcb07e6800f7420db18eb2aef79e514c94  queue-hard.jsonl
-eab64e1690f7c34bff8861055d0d40a7b2b34e6cdf6f951384c7aacf8cffda65  queue-more.jsonl
-6ec0a3e66f2cb949bd1ad5fa86b1678705919611ac7b39c5e99eb822e99c2caf  queue-noop.jsonl
-cc15489d1d77b10a6f632f18cf377410cd819c1ccb6a222e6812f3d4f55542f2  queue-train-observed.jsonl
-7a898db0e3b7574a0d60aa918f4bd6892ae52c6b616ee91dfadc890d09989cb3  queue-train.jsonl
+## adapters (gpt-6.1-sol 라벨 1000건 학습, epoch 2, LoRA GGUF f16, 40.5MB each)
+1bdf24ab86d7292816c63a2a2fe6adac4476c66d556196ceea7919c4ce007186  C:\train\run8s7\adapter-e2.gguf
+936a23719a47d596d2a446c6557ada9665e9247299d6c383f08dc401e9a98a6c  C:\train\run8s8\adapter-e2.gguf
+06cdcf9d0da459fd69037ca18995ac419a2410da9b6ee93d1f12792c13c67b36  C:\train\run8s9\adapter-e2.gguf
+## training/dev data (gpt-6.1-sol 라벨)
+fdc63b38f80d84adb5d8d436d7a457c93fbb5c8493d7dc52301b4ee809e9b9cf  train-messages-1000-sol61.jsonl
+09ecb8bb261e4cb8fa49c27bdbd185a9f83d2b6108583dc12bca514eeb230bf7  dev-messages-all-sol61.jsonl
+b3854fac63e2c1cb79ff382ee10be9e165b20a1c6fa2385f564f7a67bae73575  queue-relabel.jsonl

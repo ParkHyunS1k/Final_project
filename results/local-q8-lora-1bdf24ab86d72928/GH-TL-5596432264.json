@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-5596432264",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q8_0.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "1bdf24ab86d72928",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T20:34:50.042321+00:00",
+  "elapsed_seconds": 3.605,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "df937bcd41ddf9fbbdccd4c9d1a3d105f52dea592b6370e7881f6af7b29e13c0",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 2900,
+    "cached_input_tokens": 0,
+    "output_tokens": 233,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-5596432264",
+    "summary_ko": "실제 서버 검증 후 #13·#14는 해결됐지만 해당 작업은 현재 작업 목록에 없습니다. #11은 자연 취소 여부가 판단 보류 상태로 유지됩니다. #12는 아직 재현되지 않아 진행 중으로 볼 수 없습니다. #5·#6·#7·#9·#15·#16·#17·#18·#19·#20은 열림 상태이며, #10은 현재 상태와 다음 작업 순서를 정리하는 작업으로, 보고된 내용만으로 완료로 변경할 수 없습니다.",
+    "decision": "needs_clarification",
+    "clarification_reason_ko": "#13·#14의 완료 보고가 현재 목록에 없는 작업에 대응하므로 변경할 대상이 없습니다. #11의 판단 보류는 기존 열림 상태를 유지하는 보고이므로 진행 중으로 변경할 근거가 없습니다. #10의 완료 여부는 확인되지 않습니다.",
+    "changes": []
+  },
+  "parse_error": null
+}

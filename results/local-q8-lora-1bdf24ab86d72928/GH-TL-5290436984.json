@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-5290436984",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q8_0.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "1bdf24ab86d72928",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T20:33:09.050777+00:00",
+  "elapsed_seconds": 1.82,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "1d370e6dcdc735c54096484e63ee262358df665854831a371381f18151ce67c6",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1450,
+    "cached_input_tokens": 0,
+    "output_tokens": 116,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-5290436984",
+    "summary_ko": "잔반율·섭취 기록 카드 연동은 커밋·머지됐지만, YOLO 잔반 분석 모델 연동은 미해결 상태입니다. 후속 작업은 이미 백엔드 yolomodel 도메인 존재로 확인됐고, 현재 작업 목록에 별도 항목이 없어 변경할 상태가 없습니다.",
+    "decision": "no_change",
+    "clarification_reason_ko": null,
+    "changes": []
+  },
+  "parse_error": null
+}

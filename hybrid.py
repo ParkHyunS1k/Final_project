@@ -2,7 +2,7 @@
 
     python3 evals/local-model/hybrid.py results/local-lora-<sha16> [...]
 
-- 변형 gate: 로컬 no_change → 로컬 응답, 그 밖(propose_changes·needs_clarification) → GPT(sol low) 응답 그대로.
+- 변형 gate: 로컬 no_change → 로컬 응답, 그 밖(propose_changes·needs_clarification) → GPT(--baseline, 기본 sol low) 응답 그대로.
 - 변형 gate-propose: 로컬 propose_changes일 때만 GPT, 그 밖은 로컬 응답(확인 필요도 로컬이 쓴다).
 - 답안지는 Claude 라벨(7절). GPT 답안지는 GPT 자신과 비교하게 되어 쓰지 않는다.
 - GPT 호출률과 sol low 대비 7절 판정을 함께 낸다. 저장된 GPT 응답을 재사용하므로 실제로 부를 때의 응답 편차는 빠진다.
@@ -25,8 +25,9 @@ def mix(local, gpt, call):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("results", type=c.Path, nargs="+")
+    p.add_argument("--baseline", default="sol-low", help="거르지 못한 사례에 쓸 GPT 결과 (예: sol61-low)")
     args = p.parse_args()
-    gpt = c.load(c.TL / "results" / "sol-low")
+    gpt = c.load(c.TL / "results" / args.baseline)
     base = c.per_case(gpt)
     rules = {"gate": lambda d: d != "no_change", "gate-propose": lambda d: d == "propose_changes"}
     rows = {k: [] for k in ("local", *rules)}
@@ -36,7 +37,7 @@ def main():
         variants = {"local": (local, None)} | {k: (mix(local, gpt, f), f) for k, f in rules.items()}
         for name, (records, f) in variants.items():
             cases = c.per_case(records)
-            row = c.compare("sol-low", base, name, cases)
+            row = c.compare(args.baseline, base, name, cases)
             calls = sum(f(local[i]["response"]["decision"]) for i in c.IDS) if f else 0
             a = c.score.aggregate(cases, list(records.values()))
             m = c.metrics(cases)
@@ -48,7 +49,7 @@ def main():
         print(f"평균 {name:12} G1 {100 * statistics.mean(x['G1'] for x in ms):.1f} "
               f"G2 {100 * statistics.mean(x['G2'] for x in ms):.1f}")
     m = c.metrics(base)
-    print(f"sol low      G1 {100 * m['G1']:.1f} G2 {100 * m['G2']:.1f}")
+    print(f"{args.baseline:12} G1 {100 * m['G1']:.1f} G2 {100 * m['G2']:.1f}")
 
 
 if __name__ == "__main__":

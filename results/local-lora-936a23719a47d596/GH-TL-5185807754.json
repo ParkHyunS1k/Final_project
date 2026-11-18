@@ -1,0 +1,121 @@
+{
+  "id": "GH-TL-5185807754",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "936a23719a47d596",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T20:51:23.697963+00:00",
+  "elapsed_seconds": 4.835,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "393b9348c7a95529eb83b50e0dac35d652b4954b4fa76db79e2af226ac0f2c97",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1884,
+    "cached_input_tokens": 0,
+    "output_tokens": 478,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-5185807754",
+    "summary_ko": "요청 목록에서 일부 항목을 제외하고 모델트리 Type 속성 추가를 요청했습니다. 기존 항목은 반영됐지만, Type 추가와 남은 요청은 아직 작업 목록에 반영되지 않았습니다.",
+    "decision": "propose_changes",
+    "clarification_reason_ko": null,
+    "changes": [
+      {
+        "kind": "createTask",
+        "task_id": null,
+        "status": null,
+        "person": null,
+        "remaining_hours": null,
+        "due_at": null,
+        "title": "모델트리 Type 속성 실리도록 모델 변환 요청",
+        "basis": "fact",
+        "evidence_excerpt_indices": [
+          0
+        ]
+      },
+      {
+        "kind": "createTask",
+        "task_id": null,
+        "status": null,
+        "person": null,
+        "remaining_hours": null,
+        "due_at": null,
+        "title": "TAG No. — 생산설계 모델 이름이 담긴 속성 추가",
+        "basis": "fact",
+        "evidence_excerpt_indices": [
+          0
+        ]
+      },
+      {
+        "kind": "createTask",
+        "task_id": null,
+        "status": null,
+        "person": null,
+        "remaining_hours": null,
+        "due_at": null,
+        "title": "가공도 자재그룹 신규 적재",
+        "basis": "fact",
+        "evidence_excerpt_indices": [
+          0
+        ]
+      },
+      {
+        "kind": "createTask",
+        "task_id": null,
+        "status": null,
+        "person": null,
+        "remaining_hours": null,
+        "due_at": null,
+        "title": "BOM Q'TY — 수량 속성 또는 집계 규칙 추가",
+        "basis": "fact",
+        "evidence_excerpt_indices": [
+          0
+        ]
+      },
+      {
+        "kind": "createTask",
+        "task_id": null,
+        "status": null,
+        "person": null,
+        "remaining_hours": null,
+        "due_at": null,
+        "title": "PNOD 신규 적재",
+        "basis": "fact",
+        "evidence_excerpt_indices": [
+          0
+        ]
+      },
+      {
+        "kind": "createTask",
+        "task_id": null,
+        "status": null,
+        "person": null,
+        "remaining_hours": null,
+        "due_at": null,
+        "title": "No Paint 판정 근거 신규 적재",
+        "basis": "fact",
+        "evidence_excerpt_indices": [
+          0
+        ]
+      }
+    ]
+  },
+  "parse_error": null
+}

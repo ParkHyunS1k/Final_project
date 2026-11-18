@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-4998342964",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "1bdf24ab86d72928",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T20:38:42.606947+00:00",
+  "elapsed_seconds": 1.561,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "dc936aeba50e0d240fc242244a2d4a97253dd4af2ed33b6ef5cc0a4e848b24fd",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1454,
+    "cached_input_tokens": 0,
+    "output_tokens": 126,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-4998342964",
+    "summary_ko": "DB 인터페이스 설계와 P0 후보 감사의 검토·채택·검증은 완료됐지만, P1·P2와 P03·P16의 상세 설계가 남아 있어 전체 작업 완료로 판단할 수 없습니다.",
+    "decision": "needs_clarification",
+    "clarification_reason_ko": "일부 범위의 완료 보고이므로, 남은 범위를 포함하는 issue-10 전체를 완료 처리할지 확인이 필요합니다.",
+    "changes": []
+  },
+  "parse_error": null
+}

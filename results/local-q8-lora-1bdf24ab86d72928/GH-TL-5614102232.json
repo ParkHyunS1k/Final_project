@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-5614102232",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q8_0.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "1bdf24ab86d72928",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T20:35:05.141057+00:00",
+  "elapsed_seconds": 1.588,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "6ff61674c6fa4c36845cd16a7cee8a603820785bea9a123f7a7f66c948e67707",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1448,
+    "cached_input_tokens": 0,
+    "output_tokens": 98,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-5614102232",
+    "summary_ko": "자동 기억 추출·작업 큐·잠금·예약·사용량 제한 범위를 확정하는 이슈 #87 생성이 보고되었습니다. 기존 작업의 일부 범위 확정이며, 전체 작업 완료나 착수 등 명시적인 상태 변경은 없습니다.",
+    "decision": "no_change",
+    "clarification_reason_ko": null,
+    "changes": []
+  },
+  "parse_error": null
+}

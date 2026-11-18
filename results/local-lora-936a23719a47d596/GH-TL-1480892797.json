@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-1480892797",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "936a23719a47d596",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T20:48:56.137727+00:00",
+  "elapsed_seconds": 1.094,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "49cc1e7e2b7bcc4bbe80b9db7200289d4e7a2a360f7d2e85640ceed96344e7f4",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1006,
+    "cached_input_tokens": 0,
+    "output_tokens": 97,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-1480892797",
+    "summary_ko": "타임라인 페이지 구현은 완료됐지만 API 구현은 진행 중이므로 전체 작업의 완료 여부는 확인되지 않습니다.",
+    "decision": "needs_clarification",
+    "clarification_reason_ko": "페이지 구현 완료와 API 구현 진행이 함께 보고되어 전체 타임라인 구현 작업의 완료 여부를 확정할 수 없습니다.",
+    "changes": []
+  },
+  "parse_error": null
+}

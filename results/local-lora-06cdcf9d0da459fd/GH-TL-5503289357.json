@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-5503289357",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "06cdcf9d0da459fd",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T21:05:07.497674+00:00",
+  "elapsed_seconds": 0.996,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "e2b5aac1b5ae3553d0bb473fc9fabd291b5f37d35b8a40839a9a6e3cdf28da90",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1175,
+    "cached_input_tokens": 0,
+    "output_tokens": 77,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-5503289357",
+    "summary_ko": "관리자 전용 사용자 목록 조회 API 작업의 브랜치명이 공유되었습니다. 작업 착수나 완료 등 확정적인 상태 변경 보고는 없습니다.",
+    "decision": "no_change",
+    "clarification_reason_ko": null,
+    "changes": []
+  },
+  "parse_error": null
+}

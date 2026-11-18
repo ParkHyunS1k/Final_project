@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-3989217373",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "06cdcf9d0da459fd",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T21:03:22.088180+00:00",
+  "elapsed_seconds": 1.269,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "2219593565f45459878de53bd647c8dc87ce1e485fc72cef91423e0b2222aff2",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1295,
+    "cached_input_tokens": 0,
+    "output_tokens": 106,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-3989217373",
+    "summary_ko": "홈페이지 운영 문구와 학술지명·원문 링크 보강이 완료되었으나, 이관 체크리스트 전체의 완료 여부는 확인되지 않습니다.",
+    "decision": "needs_clarification",
+    "clarification_reason_ko": "완료 보고가 일부 항목에 한정되어 있어, 이관 체크리스트 전체를 완료 처리해도 되는지 확인이 필요합니다.",
+    "changes": []
+  },
+  "parse_error": null
+}

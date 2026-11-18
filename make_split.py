@@ -503,6 +503,57 @@ def build_more(n, base_path=OUT / "train-messages-noop.jsonl"):
     print("건너뜀:", skipped or "없음")
 
 
+QUEUE_RELABEL = OUT / "queue-relabel.jsonl"
+RELABEL_SETS = {"train-messages-1000.jsonl": "train-messages-1000-sol61.jsonl",
+                "dev-messages-all.jsonl": "dev-messages-all-sol61.jsonl"}
+
+
+def source_rows():
+    """학습·검증 메시지 파일에 쓴 사례의 원본 행(id → 행)."""
+    rows = {}
+    for path in (OUT / "train-all.jsonl", OUT / "dev-all.jsonl", QUEUE_HARD, QUEUE_NOOP, QUEUE_MORE):
+        for r in load(path):
+            rows.setdefault(r["id"], r)
+    return rows
+
+
+def relabel_queue():
+    """1000건 학습셋과 검증 40건의 원본 행을 run.py --candidates용 대기열로 쓴다(라벨 모델 교체용)."""
+    rows = source_rows()
+    ids = [i for src in RELABEL_SETS for i in used_ids_ordered(OUT / src)]
+    QUEUE_RELABEL.write_text("".join(json.dumps(rows[i], ensure_ascii=False) + "\n" for i in ids))
+    print(QUEUE_RELABEL.name, f"{len(ids)}건")
+
+
+def used_ids_ordered(path):
+    return [json.loads(x)["id"] for x in path.read_text().split("\n") if x]
+
+
+def relabel(gpt_dir):
+    """같은 사례·같은 순서로, gpt_dir의 GPT 응답을 정답으로 다시 렌더링한다. 검증 실패·실패 응답은 빼고 적는다."""
+    import jsonschema
+
+    run = load_run()
+    system = (TL_EVAL / "prompt.md").read_text()
+    validator = jsonschema.Draft202012Validator(json.loads((TL_EVAL / "schema.json").read_text()))
+    rows, answers = source_rows(), gpt_answers(gpt_dir)
+    for src, dst in RELABEL_SETS.items():
+        items, skipped, decisions = [], [], {}
+        for cid in used_ids_ordered(OUT / src):
+            if cid not in answers:
+                skipped.append((cid, "GPT 응답 실패"))
+                continue
+            item = example(cid, rows[cid], answers[cid][0], run, system, validator, skipped)
+            if item:
+                items.append(item)
+                d = answers[cid][0]["decision"]
+                decisions[d] = decisions.get(d, 0) + 1
+        (OUT / dst).write_text("".join(
+            json.dumps({k: x[k] for k in ("id", "prompt", "completion", "tokens")}, ensure_ascii=False) + "\n"
+            for x in items))
+        print(f"{src} → {dst}: {len(items)}건 {decisions}, 건너뜀 {len(skipped)}건 {skipped[:5]}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -518,6 +569,8 @@ if __name__ == "__main__":
     mode.add_argument("--build-noop", type=Path, metavar="LOCAL_RESULTS", help="로컬이 틀린 무작업 사례만 797건에 더한다")
     mode.add_argument("--more-queue", action="store_true", help="out/collect-more → out/queue-more.jsonl(queue-hard까지 제외)")
     mode.add_argument("--build-more", type=int, metavar="N", help="queue-more의 GPT 라벨에서 849건과 같은 결정 비율로 N건을 더한다")
+    mode.add_argument("--relabel-queue", action="store_true", help="1000건 학습셋·검증 40건 원본 → out/queue-relabel.jsonl")
+    mode.add_argument("--relabel", type=Path, metavar="GPT_DIR", help="같은 사례를 GPT_DIR(run.py 결과 */*.json) 정답으로 다시 렌더링")
     parser.add_argument("--labels", type=Path, default=OUT / "labels-human.jsonl")
     parser.add_argument("--gpt-labels", type=Path, help="run.py 결과 디렉터리(dev/, train/). 사람 라벨 대신 쓴다")
     parser.add_argument("--all-train", action="store_true", help="학습 대기열의 라벨을 모두 쓴다")
@@ -536,6 +589,10 @@ if __name__ == "__main__":
         hard_queue(COLLECT_MORE, QUEUE_MORE, also=(COLLECT_HARD,))
     elif args.build_more:
         build_more(args.build_more)
+    elif args.relabel_queue:
+        relabel_queue()
+    elif args.relabel:
+        relabel(args.relabel)
     elif args.subset:
         subset(args.subset)
     elif args.balance:

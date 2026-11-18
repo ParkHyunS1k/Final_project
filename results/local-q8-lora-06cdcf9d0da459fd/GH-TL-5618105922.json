@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-5618105922",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q8_0.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "06cdcf9d0da459fd",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T21:00:15.488968+00:00",
+  "elapsed_seconds": 2.326,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "718976165f1292647bd7ea61110068bf7d89a50f44b2f3a999d5778cd951e6f2",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 2148,
+    "cached_input_tokens": 0,
+    "output_tokens": 145,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-5618105922",
+    "summary_ko": "주문·미송·정산 검색 문구와 포장 대기 카드 표시를 수정했지만, 상품·재고 탭 검색과 BE 요청·응답 수정은 남아 있습니다. 일부 구현 보고이므로 전체 작업 완료로 처리할 수 없습니다.",
+    "decision": "needs_clarification",
+    "clarification_reason_ko": "수정된 범위는 issue-196의 일부이며 남은 범위가 명시되어 있습니다. 남은 범위를 포함해 issue-196를 계속 진행 중인지, 별도 작업으로 분리할지 확인이 필요합니다.",
+    "changes": []
+  },
+  "parse_error": null
+}

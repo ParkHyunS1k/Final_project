@@ -1,0 +1,56 @@
+{
+  "id": "GH-TL-5616603417",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "06cdcf9d0da459fd",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T21:05:57.303381+00:00",
+  "elapsed_seconds": 2.429,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "a4810c5a642bceaf984e2d774abfb042dbf0ebed15c36b26f6bc59c6d73fe843",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 2279,
+    "cached_input_tokens": 0,
+    "output_tokens": 212,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-5616603417",
+    "summary_ko": "동시성 리뷰에서 msg_id 전역 예약·actor/payload 바인딩 검사를 같은 수락 트랜잭션에 묶어야 한다는 요구가 제시되었습니다. 기존 이벤트 계약 작업의 범위 보완이며, 회귀 추가와 수정 SHA 전달은 요청 사항입니다.",
+    "decision": "propose_changes",
+    "clarification_reason_ko": null,
+    "changes": [
+      {
+        "kind": "createTask",
+        "task_id": null,
+        "status": null,
+        "person": null,
+        "remaining_hours": null,
+        "due_at": null,
+        "title": "msg_id 전역 예약·actor/payload 바인딩 검사·영속 기록을 같은 수락 트랜잭션에 묶고, 다른 actor의 동일 ID는 충돌로 거부하며, 정상 병렬성은 CLI 전체 시간 동안 막지 않도록 수정",
+        "basis": "fact",
+        "evidence_excerpt_indices": [
+          2
+        ]
+      }
+    ]
+  },
+  "parse_error": null
+}
