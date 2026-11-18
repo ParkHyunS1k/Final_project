@@ -1,0 +1,56 @@
+{
+  "id": "GH-TL-3026248016",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "base",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-16T11:52:30.796110+00:00",
+  "elapsed_seconds": 5.91,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "c06c7086eb27cb2186616c6ffb60f1c5296b77428605603ccc2316ba531c0795",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1556,
+    "cached_input_tokens": 0,
+    "output_tokens": 298,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-3026248016",
+    "summary_ko": "이슈 216 의 해결 계획이 명시되어 있으므로, 해당 작업을 완료 상태로 변경합니다.",
+    "decision": "propose_changes",
+    "clarification_reason_ko": "이 excerpt 에서 '이 계획으로 진행하겠습니다'라는 문구가 포함되어 해결 계획이 확정되었음을 나타냅니다. 그러나 현재 excerpt 의 상태는 'Plan' 단계이며, 실제 작업이 완료되었음을 명시하지 않았습니다. 따라서 'needs_clarification'이 더 적절할 수 있으나, 요청된 지침에 따라 excerpt 에서 명시된 '해결 계획'이 있는 경우 'propose_changes'를 적용합니다. (참고: 실제 프로젝트 관리에서는 계획 수립만으로 작업을 완료로 변경하는 것은 위험하므로, 명확한 완료 보고가 필요할 수 있습니다.)",
+    "changes": [
+      {
+        "kind": "status",
+        "task_id": "issue-216",
+        "status": "in_progress",
+        "person": "baleen37",
+        "remaining_hours": null,
+        "due_at": null,
+        "title": "Inconsistent user resolution mechanisms across codebase",
+        "basis": "fact",
+        "evidence_excerpt_indices": [
+          0
+        ]
+      }
+    ]
+  },
+  "parse_error": null
+}

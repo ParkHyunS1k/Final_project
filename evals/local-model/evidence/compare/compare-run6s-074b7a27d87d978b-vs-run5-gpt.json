@@ -1,0 +1,126 @@
+{
+ "answer_key": "gpt",
+ "baseline": {
+  "variant": "sol-low",
+  "success": 253,
+  "missing": 0,
+  "G1": 1.0,
+  "G2": 1.0,
+  "two_class": 1.0,
+  "S1_forbidden_hit_cases": 0,
+  "S2_invalid_task_refs": 0,
+  "complete_precision": 1.0,
+  "complete_recall": 1.0,
+  "noop_false_positive_rate": 0.0,
+  "class_recall": {
+   "needs_clarification": "31/31",
+   "no_change": "141/141",
+   "propose_changes": "81/81"
+  },
+  "latency": {
+   "median": 3.372,
+   "p95": 6.539,
+   "max": 14.308
+  },
+  "confusion": {
+   "no_change -> no_change": 141,
+   "propose_changes -> propose_changes": 81,
+   "needs_clarification -> needs_clarification": 31
+  }
+ },
+ "variants": [
+  {
+   "variant": "local-lora-637a5314f4215d4d",
+   "success": 252,
+   "missing": 0,
+   "G1": 0.7,
+   "G2": 0.62,
+   "two_class": 0.775,
+   "S1_forbidden_hit_cases": 0,
+   "S2_invalid_task_refs": 0,
+   "complete_precision": 0.72,
+   "complete_recall": 0.766,
+   "noop_false_positive_rate": 0.203,
+   "class_recall": {
+    "needs_clarification": "7/31",
+    "no_change": "111/141",
+    "propose_changes": "59/81"
+   },
+   "latency": {
+    "median": 1.104,
+    "p95": 1.75,
+    "max": 2.783
+   },
+   "confusion": {
+    "no_change -> no_change": 111,
+    "propose_changes -> propose_changes": 59,
+    "propose_changes -> no_change": 15,
+    "needs_clarification -> no_change": 15,
+    "needs_clarification -> propose_changes": 9,
+    "no_change -> propose_changes": 26,
+    "propose_changes -> needs_clarification": 7,
+    "no_change -> needs_clarification": 3,
+    "needs_clarification -> needs_clarification": 7,
+    "no_change -> failed": 1
+   },
+   "model_path": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+   "adapter": "637a5314f4215d4d"
+  },
+  {
+   "variant": "local-lora-074b7a27d87d978b",
+   "success": 253,
+   "missing": 0,
+   "G1": 0.739,
+   "G2": 0.667,
+   "two_class": 0.826,
+   "S1_forbidden_hit_cases": 0,
+   "S2_invalid_task_refs": 1,
+   "complete_precision": 0.796,
+   "complete_recall": 0.83,
+   "noop_false_positive_rate": 0.134,
+   "class_recall": {
+    "needs_clarification": "7/31",
+    "no_change": "120/141",
+    "propose_changes": "60/81"
+   },
+   "latency": {
+    "median": 1.026,
+    "p95": 1.616,
+    "max": 2.092
+   },
+   "confusion": {
+    "no_change -> no_change": 120,
+    "propose_changes -> propose_changes": 60,
+    "propose_changes -> no_change": 16,
+    "no_change -> propose_changes": 19,
+    "needs_clarification -> no_change": 20,
+    "needs_clarification -> needs_clarification": 7,
+    "no_change -> needs_clarification": 2,
+    "propose_changes -> needs_clarification": 5,
+    "needs_clarification -> propose_changes": 4
+   },
+   "model_path": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+   "adapter": "074b7a27d87d978b"
+  }
+ ],
+ "pairs": [
+  {
+   "pair": "local-lora-074b7a27d87d978b − local-lora-637a5314f4215d4d",
+   "G1": "+4.0 [-0.8, +8.3]",
+   "G1_verdict": "이 표본에서 확인 못함",
+   "G2": "+4.7 [-2.0, +11.4]",
+   "G2_verdict": "이 표본에서 확인 못함",
+   "two_class": "+5.1 [+0.8, +9.5]",
+   "sign_test(앞쪽만, 뒤쪽만, p)": [
+    30,
+    20,
+    0.203
+   ],
+   "note": "파인튜닝 효과",
+   "gap_closed": {
+    "G1": 0.132,
+    "G2": 0.124
+   }
+  }
+ ]
+}

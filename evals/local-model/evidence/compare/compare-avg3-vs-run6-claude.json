@@ -1,0 +1,153 @@
+{
+ "answer_key": "claude",
+ "baseline": {
+  "variant": "sol-low",
+  "success": 253,
+  "missing": 0,
+  "G1": 0.727,
+  "G2": 0.67,
+  "two_class": 0.814,
+  "S1_forbidden_hit_cases": 4,
+  "S2_invalid_task_refs": 0,
+  "complete_precision": 0.766,
+  "complete_recall": 0.878,
+  "noop_false_positive_rate": 0.126,
+  "class_recall": {
+   "needs_clarification": "15/46",
+   "no_change": "109/121",
+   "propose_changes": "60/86"
+  },
+  "latency": {
+   "median": 3.372,
+   "p95": 6.539,
+   "max": 14.308
+  },
+  "confusion": {
+   "no_change -> no_change": 109,
+   "no_change -> propose_changes": 6,
+   "needs_clarification -> no_change": 16,
+   "propose_changes -> propose_changes": 60,
+   "needs_clarification -> propose_changes": 15,
+   "propose_changes -> no_change": 16,
+   "needs_clarification -> needs_clarification": 15,
+   "propose_changes -> needs_clarification": 10,
+   "no_change -> needs_clarification": 6
+  }
+ },
+ "variants": [
+  {
+   "variant": "local-lora-bb121c14d70d7ac9",
+   "success": 253,
+   "missing": 0,
+   "G1": 0.644,
+   "G2": 0.556,
+   "two_class": 0.755,
+   "S1_forbidden_hit_cases": 9,
+   "S2_invalid_task_refs": 1,
+   "complete_precision": 0.7,
+   "complete_recall": 0.854,
+   "noop_false_positive_rate": 0.198,
+   "class_recall": {
+    "needs_clarification": "11/46",
+    "no_change": "95/121",
+    "propose_changes": "57/86"
+   },
+   "latency": {
+    "median": 1.135,
+    "p95": 1.621,
+    "max": 2.566
+   },
+   "confusion": {
+    "no_change -> no_change": 95,
+    "no_change -> propose_changes": 19,
+    "needs_clarification -> no_change": 21,
+    "no_change -> needs_clarification": 7,
+    "propose_changes -> propose_changes": 57,
+    "propose_changes -> needs_clarification": 12,
+    "propose_changes -> no_change": 17,
+    "needs_clarification -> needs_clarification": 11,
+    "needs_clarification -> propose_changes": 14
+   },
+   "model_path": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+   "adapter": "bb121c14d70d7ac9"
+  },
+  {
+   "variant": "local-avg3-892e9dcbeb11afe1",
+   "success": 253,
+   "missing": 0,
+   "G1": 0.66,
+   "G2": 0.574,
+   "two_class": 0.771,
+   "S1_forbidden_hit_cases": 11,
+   "S2_invalid_task_refs": 2,
+   "complete_precision": 0.621,
+   "complete_recall": 0.878,
+   "noop_false_positive_rate": 0.186,
+   "class_recall": {
+    "needs_clarification": "5/46",
+    "no_change": "103/121",
+    "propose_changes": "59/86"
+   },
+   "latency": {
+    "median": 1.36,
+    "p95": 2.092,
+    "max": 3.324
+   },
+   "confusion": {
+    "no_change -> no_change": 103,
+    "no_change -> propose_changes": 15,
+    "needs_clarification -> no_change": 25,
+    "propose_changes -> propose_changes": 59,
+    "propose_changes -> needs_clarification": 12,
+    "propose_changes -> no_change": 15,
+    "needs_clarification -> propose_changes": 16,
+    "needs_clarification -> needs_clarification": 5,
+    "no_change -> needs_clarification": 3
+   },
+   "model_path": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+   "adapter": "892e9dcbeb11afe1"
+  }
+ ],
+ "pairs": [
+  {
+   "pair": "local-lora-bb121c14d70d7ac9 − sol-low",
+   "G1": "-8.3 [-13.0, -3.6]",
+   "G1_verdict": "판정 불가",
+   "G2": "-11.4 [-18.2, -4.7]",
+   "G2_verdict": "판정 불가",
+   "two_class": "-5.9 [-10.3, -1.6]",
+   "sign_test(앞쪽만, 뒤쪽만, p)": [
+    17,
+    38,
+    0.006
+   ]
+  },
+  {
+   "pair": "local-avg3-892e9dcbeb11afe1 − sol-low",
+   "G1": "-6.7 [-11.5, -2.0]",
+   "G1_verdict": "판정 불가",
+   "G2": "-9.6 [-15.4, -3.8]",
+   "G2_verdict": "판정 불가",
+   "two_class": "-4.3 [-8.3, +0.0]",
+   "sign_test(앞쪽만, 뒤쪽만, p)": [
+    17,
+    34,
+    0.024
+   ]
+  },
+  {
+   "pair": "local-avg3-892e9dcbeb11afe1 − local-lora-bb121c14d70d7ac9",
+   "G1": "+1.6 [-2.4, +5.5]",
+   "G1_verdict": "이 표본에서 확인 못함",
+   "G2": "+1.8 [-3.0, +6.6]",
+   "G2_verdict": "이 표본에서 확인 못함",
+   "two_class": "+1.6 [-2.4, +5.5]",
+   "sign_test(앞쪽만, 뒤쪽만, p)": [
+    22,
+    18,
+    0.636
+   ],
+   "note": "파인튜닝 효과"
+  }
+ ]
+}

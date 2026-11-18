@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-2284509177",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "base",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-16T11:50:39.330993+00:00",
+  "elapsed_seconds": 2.741,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "9b07cc887e78045232fc20d33d7124072d2e3e8d6dbe1429631f0fac357b80c6",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1210,
+    "cached_input_tokens": 0,
+    "output_tokens": 139,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-2284509177",
+    "summary_ko": "excerpt 에서 로그인 URL 이 /login 으로 확정된 사실만 보고 있으며, 이는 이미 존재하는 issue-17 과 직접적인 상태 변경을 요구하지 않습니다.",
+    "decision": "no_change",
+    "clarification_reason_ko": "excerpt[0] 은 '로그인 url 은 /login'이라는 단순한 사실 확인을 담고 있을 뿐, issue-17 의 상태 변경이나 새로운 작업 생성을 명시하지 않았습니다. 따라서 변경을 제안할 수 없습니다.",
+    "changes": []
+  },
+  "parse_error": null
+}

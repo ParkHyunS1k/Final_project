@@ -1,0 +1,8 @@
+{
+ "variant": "base",
+ "port": 8080,
+ "checked_at": "2026-11-16T11:46:22.786504+00:00",
+ "model_path": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+ "lora_adapters": [],
+ "adapter_sha256": null
+}

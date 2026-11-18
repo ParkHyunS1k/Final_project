@@ -1,0 +1,201 @@
+{
+ "answer_key": "claude",
+ "baseline": {
+  "variant": "sol-low",
+  "success": 253,
+  "missing": 0,
+  "G1": 0.727,
+  "G2": 0.67,
+  "two_class": 0.814,
+  "S1_forbidden_hit_cases": 4,
+  "S2_invalid_task_refs": 0,
+  "complete_precision": 0.766,
+  "complete_recall": 0.878,
+  "noop_false_positive_rate": 0.126,
+  "class_recall": {
+   "needs_clarification": "15/46",
+   "no_change": "109/121",
+   "propose_changes": "60/86"
+  },
+  "latency": {
+   "median": 3.372,
+   "p95": 6.539,
+   "max": 14.308
+  },
+  "confusion": {
+   "no_change -> no_change": 109,
+   "no_change -> propose_changes": 6,
+   "needs_clarification -> no_change": 16,
+   "propose_changes -> propose_changes": 60,
+   "needs_clarification -> propose_changes": 15,
+   "propose_changes -> no_change": 16,
+   "needs_clarification -> needs_clarification": 15,
+   "propose_changes -> needs_clarification": 10,
+   "no_change -> needs_clarification": 6
+  }
+ },
+ "variants": [
+  {
+   "variant": "local-q8-lora-bb121c14d70d7ac9",
+   "success": 253,
+   "missing": 0,
+   "G1": 0.684,
+   "G2": 0.627,
+   "two_class": 0.806,
+   "S1_forbidden_hit_cases": 7,
+   "S2_invalid_task_refs": 0,
+   "complete_precision": 0.756,
+   "complete_recall": 0.829,
+   "noop_false_positive_rate": 0.156,
+   "class_recall": {
+    "needs_clarification": "9/46",
+    "no_change": "101/121",
+    "propose_changes": "63/86"
+   },
+   "latency": {
+    "median": 1.491,
+    "p95": 2.308,
+    "max": 3.5
+   },
+   "confusion": {
+    "no_change -> no_change": 101,
+    "no_change -> propose_changes": 13,
+    "needs_clarification -> no_change": 24,
+    "propose_changes -> propose_changes": 63,
+    "no_change -> needs_clarification": 7,
+    "propose_changes -> needs_clarification": 9,
+    "propose_changes -> no_change": 14,
+    "needs_clarification -> propose_changes": 13,
+    "needs_clarification -> needs_clarification": 9
+   },
+   "model_path": "C:\\models\\Qwen3.5-4B-Q8_0.gguf",
+   "adapter": "bb121c14d70d7ac9"
+  },
+  {
+   "variant": "local-q8-lora-074b7a27d87d978b",
+   "success": 253,
+   "missing": 0,
+   "G1": 0.7,
+   "G2": 0.616,
+   "two_class": 0.814,
+   "S1_forbidden_hit_cases": 4,
+   "S2_invalid_task_refs": 1,
+   "complete_precision": 0.778,
+   "complete_recall": 0.854,
+   "noop_false_positive_rate": 0.15,
+   "class_recall": {
+    "needs_clarification": "6/46",
+    "no_change": "107/121",
+    "propose_changes": "64/86"
+   },
+   "latency": {
+    "median": 1.381,
+    "p95": 2.373,
+    "max": 3.161
+   },
+   "confusion": {
+    "no_change -> no_change": 107,
+    "no_change -> propose_changes": 13,
+    "needs_clarification -> no_change": 28,
+    "propose_changes -> propose_changes": 64,
+    "propose_changes -> no_change": 16,
+    "needs_clarification -> needs_clarification": 6,
+    "propose_changes -> needs_clarification": 6,
+    "needs_clarification -> propose_changes": 12,
+    "no_change -> needs_clarification": 1
+   },
+   "model_path": "C:\\models\\Qwen3.5-4B-Q8_0.gguf",
+   "adapter": "074b7a27d87d978b"
+  },
+  {
+   "variant": "local-q8-lora-9f505a3bfcb8a98e",
+   "success": 253,
+   "missing": 0,
+   "G1": 0.672,
+   "G2": 0.537,
+   "two_class": 0.767,
+   "S1_forbidden_hit_cases": 17,
+   "S2_invalid_task_refs": 2,
+   "complete_precision": 0.571,
+   "complete_recall": 0.878,
+   "noop_false_positive_rate": 0.228,
+   "class_recall": {
+    "needs_clarification": "5/46",
+    "no_change": "100/121",
+    "propose_changes": "65/86"
+   },
+   "latency": {
+    "median": 1.491,
+    "p95": 2.437,
+    "max": 5.57
+   },
+   "confusion": {
+    "no_change -> no_change": 100,
+    "no_change -> propose_changes": 21,
+    "needs_clarification -> no_change": 24,
+    "propose_changes -> propose_changes": 65,
+    "propose_changes -> no_change": 12,
+    "needs_clarification -> propose_changes": 17,
+    "propose_changes -> needs_clarification": 9,
+    "needs_clarification -> needs_clarification": 5
+   },
+   "model_path": "C:\\models\\Qwen3.5-4B-Q8_0.gguf",
+   "adapter": "9f505a3bfcb8a98e"
+  }
+ ],
+ "pairs": [
+  {
+   "pair": "local-q8-lora-bb121c14d70d7ac9 − sol-low",
+   "G1": "-4.3 [-8.7, +0.0]",
+   "G1_verdict": "판정 불가",
+   "G2": "-4.3 [-10.8, +2.3]",
+   "G2_verdict": "판정 불가",
+   "two_class": "-0.8 [-4.7, +3.2]",
+   "sign_test(앞쪽만, 뒤쪽만, p)": [
+    18,
+    29,
+    0.144
+   ]
+  },
+  {
+   "pair": "local-q8-lora-074b7a27d87d978b − sol-low",
+   "G1": "-2.8 [-7.9, +2.4]",
+   "G1_verdict": "판정 불가",
+   "G2": "-5.4 [-12.5, +2.1]",
+   "G2_verdict": "판정 불가",
+   "two_class": "+0.0 [-4.3, +4.3]",
+   "sign_test(앞쪽만, 뒤쪽만, p)": [
+    26,
+    33,
+    0.435
+   ]
+  },
+  {
+   "pair": "local-q8-lora-9f505a3bfcb8a98e − sol-low",
+   "G1": "-5.5 [-10.3, -0.8]",
+   "G1_verdict": "판정 불가",
+   "G2": "-13.4 [-20.2, -6.4]",
+   "G2_verdict": "미달",
+   "two_class": "-4.7 [-9.1, +0.0]",
+   "sign_test(앞쪽만, 뒤쪽만, p)": [
+    19,
+    33,
+    0.07
+   ]
+  },
+  {
+   "pair": "local-q8-lora-9f505a3bfcb8a98e − local-q8-lora-bb121c14d70d7ac9",
+   "G1": "-1.2 [-5.5, +3.2]",
+   "G1_verdict": "이 표본에서 확인 못함",
+   "G2": "-9.0 [-14.8, -3.3]",
+   "G2_verdict": "이 표본에서 확인 못함",
+   "two_class": "-4.0 [-8.3, +0.4]",
+   "sign_test(앞쪽만, 뒤쪽만, p)": [
+    19,
+    22,
+    0.755
+   ],
+   "note": "파인튜닝 효과"
+  }
+ ]
+}

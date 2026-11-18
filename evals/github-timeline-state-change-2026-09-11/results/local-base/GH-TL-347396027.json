@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-347396027",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "base",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-16T11:52:49.217970+00:00",
+  "elapsed_seconds": 2.548,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "b3e93cc53316eca1dc38a7873e01c96de2b58d3e40184ffb126b9c8205fa4dc8",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1580,
+    "cached_input_tokens": 0,
+    "output_tokens": 113,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-347396027",
+    "summary_ko": "공유 기능 구현에 대한 구체적인 구현 방법과 코드 예제가 제시됨.",
+    "decision": "no_change",
+    "clarification_reason_ko": "이 excerpt 는 공유 기능 구현을 위한 API 문서 링크와 HTML 코드 예제를 공유하고 있으며, 작업의 진행 상태나 완료 여부를 명시하지 않았습니다. 따라서 상태 변경을 제안할 수 없습니다.",
+    "changes": []
+  },
+  "parse_error": null
+}

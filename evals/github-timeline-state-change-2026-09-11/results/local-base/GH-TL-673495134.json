@@ -1,0 +1,57 @@
+{
+  "id": "GH-TL-673495134",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "base",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-16T11:58:43.171532+00:00",
+  "elapsed_seconds": 2.906,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "0fd7bd31188a76a407e8f21ca836e148e09d33476c7d68ef091a788b623652a9",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1655,
+    "cached_input_tokens": 0,
+    "output_tokens": 283,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-673495134",
+    "summary_ko": "excerpt 0 에서 '에러메세지 표시 남음'이라는 TODO 항목이 명시되어 있으며, excerpt 1 에서 '진행도 60% 완료'라고 보고함에도 불구하고, excerpt 0 의 명시적인 TODO 상태가 더 최신이며 구체적인 작업 상태를 반영하므로, issue-11 에 대한 remaining 을 60% 로 제안합니다.",
+    "decision": "propose_changes",
+    "clarification_reason_ko": "excerpt 0 의 '에러메세지 표시 남음'은 명확한 TODO 항목으로, excerpt 1 의 '60% 완료'와 충돌할 수 있습니다. excerpt 0 이 더 최신이며 구체적인 작업 상태를 명시하므로, 이를 기반으로 remaining 을 설정합니다.",
+    "changes": [
+      {
+        "kind": "remaining",
+        "task_id": "issue-11",
+        "status": "in_progress",
+        "person": null,
+        "remaining_hours": 60,
+        "due_at": null,
+        "title": null,
+        "basis": "fact",
+        "evidence_excerpt_indices": [
+          0,
+          1
+        ]
+      }
+    ]
+  },
+  "parse_error": null
+}

@@ -1,0 +1,127 @@
+{
+ "answer_key": "gpt",
+ "baseline": {
+  "variant": "sol-low",
+  "success": 253,
+  "missing": 0,
+  "G1": 1.0,
+  "G2": 1.0,
+  "two_class": 1.0,
+  "S1_forbidden_hit_cases": 0,
+  "S2_invalid_task_refs": 0,
+  "complete_precision": 1.0,
+  "complete_recall": 1.0,
+  "noop_false_positive_rate": 0.0,
+  "class_recall": {
+   "needs_clarification": "31/31",
+   "no_change": "141/141",
+   "propose_changes": "81/81"
+  },
+  "latency": {
+   "median": 3.372,
+   "p95": 6.539,
+   "max": 14.308
+  },
+  "confusion": {
+   "no_change -> no_change": 141,
+   "propose_changes -> propose_changes": 81,
+   "needs_clarification -> needs_clarification": 31
+  }
+ },
+ "variants": [
+  {
+   "variant": "local-base",
+   "success": 252,
+   "missing": 0,
+   "G1": 0.455,
+   "G2": 0.371,
+   "two_class": 0.628,
+   "S1_forbidden_hit_cases": 0,
+   "S2_invalid_task_refs": 3,
+   "complete_precision": 0.369,
+   "complete_recall": 0.872,
+   "noop_false_positive_rate": 0.442,
+   "class_recall": {
+    "needs_clarification": "8/31",
+    "no_change": "43/141",
+    "propose_changes": "64/81"
+   },
+   "latency": {
+    "median": 3.156,
+    "p95": 4.367,
+    "max": 5.91
+   },
+   "confusion": {
+    "no_change -> needs_clarification": 41,
+    "propose_changes -> needs_clarification": 9,
+    "no_change -> propose_changes": 56,
+    "propose_changes -> propose_changes": 64,
+    "no_change -> no_change": 43,
+    "needs_clarification -> propose_changes": 21,
+    "needs_clarification -> no_change": 2,
+    "needs_clarification -> needs_clarification": 8,
+    "propose_changes -> no_change": 8,
+    "no_change -> failed": 1
+   },
+   "model_path": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+   "adapter": "base"
+  },
+  {
+   "variant": "local-lora-637a5314f4215d4d",
+   "success": 252,
+   "missing": 0,
+   "G1": 0.7,
+   "G2": 0.62,
+   "two_class": 0.775,
+   "S1_forbidden_hit_cases": 0,
+   "S2_invalid_task_refs": 0,
+   "complete_precision": 0.72,
+   "complete_recall": 0.766,
+   "noop_false_positive_rate": 0.203,
+   "class_recall": {
+    "needs_clarification": "7/31",
+    "no_change": "111/141",
+    "propose_changes": "59/81"
+   },
+   "latency": {
+    "median": 1.104,
+    "p95": 1.75,
+    "max": 2.783
+   },
+   "confusion": {
+    "no_change -> no_change": 111,
+    "propose_changes -> propose_changes": 59,
+    "propose_changes -> no_change": 15,
+    "needs_clarification -> no_change": 15,
+    "needs_clarification -> propose_changes": 9,
+    "no_change -> propose_changes": 26,
+    "propose_changes -> needs_clarification": 7,
+    "no_change -> needs_clarification": 3,
+    "needs_clarification -> needs_clarification": 7,
+    "no_change -> failed": 1
+   },
+   "model_path": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+   "adapter": "637a5314f4215d4d"
+  }
+ ],
+ "pairs": [
+  {
+   "pair": "local-lora-637a5314f4215d4d − local-base",
+   "G1": "+24.5 [+17.8, +31.2]",
+   "G1_verdict": "효과 확인",
+   "G2": "+24.8 [+16.7, +32.6]",
+   "G2_verdict": "효과 확인",
+   "two_class": "+14.6 [+8.3, +20.9]",
+   "sign_test(앞쪽만, 뒤쪽만, p)": [
+    91,
+    29,
+    0.0
+   ],
+   "note": "파인튜닝 효과",
+   "gap_closed": {
+    "G1": 0.449,
+    "G2": 0.395
+   }
+  }
+ ]
+}

@@ -1,0 +1,56 @@
+{
+  "id": "GH-TL-5395733186",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "892e9dcbeb11afe1",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T10:24:01.328590+00:00",
+  "elapsed_seconds": 2.467,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "6b6afbe15d01e224973ae49d0dc69349167262980d599f1b38fb6e935c2f517c",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 2435,
+    "cached_input_tokens": 0,
+    "output_tokens": 167,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-5395733186",
+    "summary_ko": "기존 이슈의 5개 게이트는 실제 CI에 배선됐지만, 두 가지 항목이 남아 있습니다. 외부 장소 JSON 게이트는 추가 배선이 필요하며, 한 타일 JSON 드리프트는 재생성 금지로 원리적으로 불가능하다고 보고했습니다.",
+    "decision": "propose_changes",
+    "clarification_reason_ko": null,
+    "changes": [
+      {
+        "kind": "createTask",
+        "task_id": null,
+        "status": null,
+        "person": null,
+        "remaining_hours": null,
+        "due_at": null,
+        "title": "external-places.json 게이트 CI 배선",
+        "basis": "fact",
+        "evidence_excerpt_indices": [
+          1
+        ]
+      }
+    ]
+  },
+  "parse_error": null
+}

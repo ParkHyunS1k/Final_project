@@ -1,0 +1,20 @@
+{
+ "variant": "q8-lora-9f505a3bfcb8a98e",
+ "port": 8081,
+ "checked_at": "2026-11-18T10:39:56.845327+00:00",
+ "model_path": "C:\\models\\Qwen3.5-4B-Q8_0.gguf",
+ "lora_adapters": [
+  {
+   "id": 0,
+   "path": "\\train\\run6s9\\adapter-e2.gguf",
+   "scale": 1.0,
+   "task_name": "",
+   "prompt_prefix": ""
+  }
+ ],
+ "intended_scales": [
+  1.0
+ ],
+ "adapter_sha256": "9f505a3bfcb8a98e0d224702269d2b2ecfb97fb7071aebf66ff94b3b88bff199",
+ "chat_template_sha256": "a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715"
+}

@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-534035184",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "base",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-16T11:56:30.213068+00:00",
+  "elapsed_seconds": 1.574,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "9bf79167cd06467f2b059cd6dbcd667038a306b79648eb4f3980f9751a061b63",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1232,
+    "cached_input_tokens": 0,
+    "output_tokens": 150,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-534035184",
+    "summary_ko": "사용자가 스크롤 뷰의 delegate 를 통해 Y 좌표를 제한하여 안전 영역 문제를 해결한 코드를 제시함.",
+    "decision": "no_change",
+    "clarification_reason_ko": "제시된 내용은 특정 작업이 완료되었음을 명시하는 사실 (완료 보고서) 이 아니며, 코드 구현이나 해결 방법의 설명에 해당합니다. 현재 'issue-24' 작업은 여전히 'open' 상태이며, 이 코드가 해당 작업을 완료했음을 직접적으로 증명하는 문구나 상태 변경은 없습니다.",
+    "changes": []
+  },
+  "parse_error": null
+}

@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-3014812691",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "base",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-16T11:52:27.126905+00:00",
+  "elapsed_seconds": 3.666,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "44cdb3a3c3949e9e7f8e3cf6ab00536bc558c099d36cd1583dd230726bdd2cba",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1577,
+    "cached_input_tokens": 0,
+    "output_tokens": 188,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-3014812691",
+    "summary_ko": "이슈 15(정하진 - kafka-dlq-handler)의 작업이 완료되었음을 명시했습니다.",
+    "decision": "propose_changes",
+    "clarification_reason_ko": "이슈 15의 제목이 '정하진 - kafka-dlq-handler'로 되어 있고, 현재 할당자(HajinJ)가 작업 완료 후 다시 이슈를 작성해 요청한 것으로 보입니다. 하지만 '완료' 상태로의 변경을 제안하기 위해서는 작업이 실제로 완료되었음을 명시하는 excerpt이 필요합니다. 현재 excerpt는 '확인 부탁드립니다!'라는 요청만 포함되어 있어, 작업이 완료되었는지는 불분명합니다. 따라서 명확한 상태 변경을 제안할 수 없습니다.",
+    "changes": []
+  },
+  "parse_error": null
+}

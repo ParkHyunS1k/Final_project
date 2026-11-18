@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-5395733186",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "e248c5febb746cca",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T14:29:43.659960+00:00",
+  "elapsed_seconds": 1.412,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "6b6afbe15d01e224973ae49d0dc69349167262980d599f1b38fb6e935c2f517c",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 2435,
+    "cached_input_tokens": 0,
+    "output_tokens": 109,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-5395733186",
+    "summary_ko": "이슈 #542의 8개 검증 항목 중 5개는 실제 게이트로 확인됐지만, `external-places.json` 경고와 `han-tiles.json` 재생성 불가능 문제가 남아 있습니다. 남은 2건이 해결될 때까지 이슈를 열어 두겠다는 보고입니다.",
+    "decision": "no_change",
+    "clarification_reason_ko": null,
+    "changes": []
+  },
+  "parse_error": null
+}

@@ -1,0 +1,57 @@
+{
+  "id": "GH-TL-5311191379",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "base",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-16T11:56:21.080430+00:00",
+  "elapsed_seconds": 2.597,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "db44c07e3ab5d7765bd96c42e163944d75e072a4b01a1bbdef9105daa8debddc",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1820,
+    "cached_input_tokens": 0,
+    "output_tokens": 236,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-5311191379",
+    "summary_ko": "Reception Core v0.1 구현 완료 및 Draft PR #20 생성됨. Open Reception README 갱신됨.",
+    "decision": "propose_changes",
+    "clarification_reason_ko": "excerpt 0 에서 'Case 상태 및 허용 전이', 'Human 승인 게이트' 구현 완료 및 'Draft PR #20' 생성됨을 명시하고, excerpt 1 에서 'Open Reception README 현재 버전 갱신'을 확인함. 이는 issue-19 의 완료 상태를 반영함.",
+    "changes": [
+      {
+        "kind": "complete",
+        "task_id": "issue-19",
+        "status": null,
+        "person": null,
+        "remaining_hours": null,
+        "due_at": null,
+        "title": null,
+        "basis": "fact",
+        "evidence_excerpt_indices": [
+          0,
+          1
+        ]
+      }
+    ]
+  },
+  "parse_error": null
+}

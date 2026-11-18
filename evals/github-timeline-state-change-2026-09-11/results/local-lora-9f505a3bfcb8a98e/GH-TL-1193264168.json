@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-1193264168",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "9f505a3bfcb8a98e",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T08:46:02.524836+00:00",
+  "elapsed_seconds": 0.894,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "a9238c4450a2b99a965062d66417352cb031cd7838f07a9c56a0de469556b57e",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1166,
+    "cached_input_tokens": 0,
+    "output_tokens": 77,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-1193264168",
+    "summary_ko": "히스토리 페이지와 친구 클릭 시 투두 전송 이력 페이지의 구현 범위를 설명한 내용입니다. 확정된 작업 상태 변경은 없습니다.",
+    "decision": "no_change",
+    "clarification_reason_ko": null,
+    "changes": []
+  },
+  "parse_error": null
+}

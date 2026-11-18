@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-206866582",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "base",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-16T11:50:21.302337+00:00",
+  "elapsed_seconds": 2.611,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "0f5771c1afbb727423472901b195d680d1e53b271d8d7f1b268d5b16a1842c7a",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1088,
+    "cached_input_tokens": 0,
+    "output_tokens": 136,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-206866582",
+    "summary_ko": "CASE DATA 에서 '드로어 메뉴 구현' 작업에 대한 구체적인 완료 상태나 할당자 변경 등의 명확한 사실은 없습니다.",
+    "decision": "no_change",
+    "clarification_reason_ko": "제시된 excerpt(0)는 'design support library 의 navigation view 를 이용하여 구현할 수 있다'는 기술적 가능성에 대한 의견이나 설명일 뿐, 작업이 완료되었거나 진행 중임을 명시하는 확정적인 상태 변화 사실은 아닙니다.",
+    "changes": []
+  },
+  "parse_error": null
+}

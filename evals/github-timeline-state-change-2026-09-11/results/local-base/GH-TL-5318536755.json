@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-5318536755",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "base",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-16T11:56:27.801318+00:00",
+  "elapsed_seconds": 2.408,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "ef077853fbb886fdc64cfc5b0080c303c4b912ab9ad9e5363249a919ba1a1bf2",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 2307,
+    "cached_input_tokens": 0,
+    "output_tokens": 221,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-5318536755",
+    "summary_ko": "excerpts 는 issue-273 의 3 가지 구체적인 버그 수정을 명시적으로 제안합니다: 잠금 디렉터리 PID 추적, cte_max_recursion_depth 설정, 및 부팅 시 지표 확인. 또한 잠금 디렉터리 손으로 지우는 문제 사례를 공유합니다.",
+    "decision": "needs_clarification",
+    "clarification_reason_ko": "excerpts 는 issue-273 와 관련된 구체적인 수정 사항 (PID 추적, cte 설정, 지표 확인) 을 제안하지만, 이는 현재 task list 에 존재하지 않는 새로운 작업 항목을 생성해야 함에도 불구하고, 해당 작업이 이미 issue-273 에 포함되었는지, 아니면 별도의 task 로 분리되어야 하는지 명확하지 않습니다. 또한, 잠금 디렉터리 손으로 지우는 문제 사례는 공유된 정보일 뿐 상태 변경을 요구하지 않습니다.",
+    "changes": []
+  },
+  "parse_error": null
+}

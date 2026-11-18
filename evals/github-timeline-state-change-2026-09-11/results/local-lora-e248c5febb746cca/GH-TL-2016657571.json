@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-2016657571",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "e248c5febb746cca",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T14:27:19.471819+00:00",
+  "elapsed_seconds": 0.989,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "1f7b5c81e30cfd62e38d7bfc0195b79fe288afeaeb722fbf1d758ecf141bdc4b",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1221,
+    "cached_input_tokens": 0,
+    "output_tokens": 82,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-2016657571",
+    "summary_ko": "산출물 작업 #38의 예시 업데이트가 언급되었지만, 작업의 시작·완료·담당자 변경 등 확정적인 상태 변경은 명시되지 않았습니다.",
+    "decision": "no_change",
+    "clarification_reason_ko": null,
+    "changes": []
+  },
+  "parse_error": null
+}

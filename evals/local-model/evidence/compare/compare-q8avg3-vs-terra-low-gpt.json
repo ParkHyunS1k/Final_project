@@ -1,0 +1,121 @@
+{
+ "answer_key": "gpt",
+ "baseline": {
+  "variant": "sol-low",
+  "success": 253,
+  "missing": 0,
+  "G1": 1.0,
+  "G2": 1.0,
+  "two_class": 1.0,
+  "S1_forbidden_hit_cases": 0,
+  "S2_invalid_task_refs": 0,
+  "complete_precision": 1.0,
+  "complete_recall": 1.0,
+  "noop_false_positive_rate": 0.0,
+  "class_recall": {
+   "needs_clarification": "31/31",
+   "no_change": "141/141",
+   "propose_changes": "81/81"
+  },
+  "latency": {
+   "median": 3.372,
+   "p95": 6.539,
+   "max": 14.308
+  },
+  "confusion": {
+   "no_change -> no_change": 141,
+   "propose_changes -> propose_changes": 81,
+   "needs_clarification -> needs_clarification": 31
+  }
+ },
+ "variants": [
+  {
+   "variant": "terra-low",
+   "success": 253,
+   "missing": 0,
+   "G1": 0.739,
+   "G2": 0.624,
+   "two_class": 0.834,
+   "S1_forbidden_hit_cases": 0,
+   "S2_invalid_task_refs": 0,
+   "complete_precision": 0.848,
+   "complete_recall": 0.83,
+   "noop_false_positive_rate": 0.099,
+   "class_recall": {
+    "needs_clarification": "9/31",
+    "no_change": "122/141",
+    "propose_changes": "56/81"
+   },
+   "latency": {
+    "median": 2.129,
+    "p95": 3.017,
+    "max": 9.273
+   },
+   "confusion": {
+    "no_change -> no_change": 122,
+    "propose_changes -> propose_changes": 56,
+    "propose_changes -> no_change": 18,
+    "no_change -> propose_changes": 13,
+    "needs_clarification -> no_change": 18,
+    "needs_clarification -> needs_clarification": 9,
+    "no_change -> needs_clarification": 6,
+    "propose_changes -> needs_clarification": 7,
+    "needs_clarification -> propose_changes": 4
+   }
+  },
+  {
+   "variant": "local-q8-avg3-892e9dcbeb11afe1",
+   "success": 253,
+   "missing": 0,
+   "G1": 0.763,
+   "G2": 0.663,
+   "two_class": 0.822,
+   "S1_forbidden_hit_cases": 0,
+   "S2_invalid_task_refs": 0,
+   "complete_precision": 0.714,
+   "complete_recall": 0.851,
+   "noop_false_positive_rate": 0.163,
+   "class_recall": {
+    "needs_clarification": "11/31",
+    "no_change": "118/141",
+    "propose_changes": "64/81"
+   },
+   "latency": {
+    "median": 1.783,
+    "p95": 2.797,
+    "max": 5.294
+   },
+   "confusion": {
+    "no_change -> no_change": 118,
+    "propose_changes -> propose_changes": 64,
+    "propose_changes -> no_change": 8,
+    "needs_clarification -> no_change": 13,
+    "needs_clarification -> needs_clarification": 11,
+    "needs_clarification -> propose_changes": 7,
+    "propose_changes -> needs_clarification": 9,
+    "no_change -> propose_changes": 21,
+    "no_change -> needs_clarification": 2
+   }
+  }
+ ],
+ "pairs": [
+  {
+   "pair": "local-q8-avg3-892e9dcbeb11afe1 − terra-low",
+   "G1": "+2.4 [-2.4, +7.1]",
+   "G1_verdict": "이 표본에서 확인 못함",
+   "G2": "+4.0 [-4.5, +12.5]",
+   "G2_verdict": "이 표본에서 확인 못함",
+   "two_class": "-1.2 [-5.5, +3.2]",
+   "sign_test(앞쪽만, 뒤쪽만, p)": [
+    30,
+    24,
+    0.497
+   ],
+   "note": "파인튜닝 효과",
+   "gap_closed": {
+    "G1": 0.091,
+    "G2": 0.105
+   }
+  }
+ ]
+}

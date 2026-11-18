@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-3904370601",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "base",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-16T11:53:00.567625+00:00",
+  "elapsed_seconds": 2.863,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "7a289c4dfdf823fde64788772772770baef0b662a9cf667516b5d2d41a7e24d5",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 984,
+    "cached_input_tokens": 0,
+    "output_tokens": 167,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-3904370601",
+    "summary_ko": "excerpt는 로컬 개발 완료 후 테스트 및 메인 배포 전 단계임을 설명하지만, 구체적인 작업 완료 상태나 변경 사항을 명시하지 않아 명확한 상태 변경을 제안할 수 없음.",
+    "decision": "needs_clarification",
+    "clarification_reason_ko": "excerpt(0)은 '로컬에서 개발 끝나고...메인 가기 전에 진행하기 위함'이라는 의도나 계획을 서술하고 있으나, 현재 작업의 실제 완료 여부, 진행 중인지, 또는 어떤 부분이 완료되었는지에 대한 확정적인 사실은 제시하지 않음. 따라서 task 상태 변경을 제안할 수 없음.",
+    "changes": []
+  },
+  "parse_error": null
+}

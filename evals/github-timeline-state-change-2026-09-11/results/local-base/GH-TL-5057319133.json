@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-5057319133",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "base",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-16T11:54:53.248190+00:00",
+  "elapsed_seconds": 3.825,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "5d6d520b4a5932fe914a4919fd5f66fa6d70b210a4f569e50812655f5b9e9bf7",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1610,
+    "cached_input_tokens": 0,
+    "output_tokens": 196,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-5057319133",
+    "summary_ko": "사용자가 'deep-interview 의도 파악 UX·효능 개선' 이슈 (issue-77) 와 관련된 세션 리뷰 결과를 공유했습니다. 각 리뷰에서 제안된 규칙 (기본 처분, 2단 인정, 구동 루프 완주, 재진입 순서) 이 모두 '추천 (Recommended)'으로 확정되었습니다.",
+    "decision": "no_change",
+    "clarification_reason_ko": "제출된 텍스트는 대화의 내용과 결론 (추천 규칙) 을 설명하고 있지만, 구체적인 작업 상태 변경 (완료, 진행 중, 할당 변경 등) 을 명시하지 않았습니다. 이는 현재 이슈 (issue-77) 의 진행 상황이나 완료 여부에 대한 확정된 사실로 해석될 수 없습니다.",
+    "changes": []
+  },
+  "parse_error": null
+}

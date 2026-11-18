@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-932875484",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "base",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-16T11:59:06.502036+00:00",
+  "elapsed_seconds": 1.9,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "88e3a59b34ed33ce1cd3b976be90b72d8dfc8ebaa21ceb16f28cb839842f6521",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1199,
+    "cached_input_tokens": 0,
+    "output_tokens": 193,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-932875484",
+    "summary_ko": "excerpt 에서 '[BTS-15] 커뮤니티 CRUD 작업' 과 관련된 구체적인 작업 내용인 '게시판(2) 생성' 이 언급되었으나, 이는 현재 진행 중인 작업의 일부 단계일 뿐이며, 해당 작업이 완료되었거나 상태 변경이 명확히 명시된 사실은 아닙니다.",
+    "decision": "needs_clarification",
+    "clarification_reason_ko": "excerpt 가 특정 작업을 수행하고 있음을 시사하지만, 이는 현재 'open' 상태인 issue-26 의 일부 단계일 가능성이 높습니다. 작업이 완료되었는지, 아니면 단순히 논의 중인 단계인지 명확하지 않으므로, 'complete' 또는 다른 상태 변경을 제안하는 것은 위험합니다. 또한 excerpt 가 다른 task 를 지목하지는 않습니다.",
+    "changes": []
+  },
+  "parse_error": null
+}

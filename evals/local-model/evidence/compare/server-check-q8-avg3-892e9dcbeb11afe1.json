@@ -1,0 +1,36 @@
+{
+ "variant": "q8-avg3-892e9dcbeb11afe1",
+ "port": 8081,
+ "checked_at": "2026-11-18T10:49:05.248022+00:00",
+ "model_path": "C:\\models\\Qwen3.5-4B-Q8_0.gguf",
+ "lora_adapters": [
+  {
+   "id": 0,
+   "path": "\\train\\run6\\adapter-e2.gguf",
+   "scale": 0.33333298563957214,
+   "task_name": "",
+   "prompt_prefix": ""
+  },
+  {
+   "id": 1,
+   "path": "\\train\\run6s8\\adapter-e2.gguf",
+   "scale": 0.33333298563957214,
+   "task_name": "",
+   "prompt_prefix": ""
+  },
+  {
+   "id": 2,
+   "path": "\\train\\run6s9\\adapter-e2.gguf",
+   "scale": 0.33333298563957214,
+   "task_name": "",
+   "prompt_prefix": ""
+  }
+ ],
+ "intended_scales": [
+  0.333333,
+  0.333333,
+  0.333333
+ ],
+ "adapter_sha256": "892e9dcbeb11afe10ff05a3ec3125d9d0663f0a5024c6a6831440272413af77a",
+ "chat_template_sha256": "a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715"
+}

@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-1236328131",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "e248c5febb746cca",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-18T14:26:28.855458+00:00",
+  "elapsed_seconds": 0.871,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "6e63016824c6420a764d1fcbf7bda423ff9684d0da9844c90ee45519477f224b",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1046,
+    "cached_input_tokens": 0,
+    "output_tokens": 78,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-1236328131",
+    "summary_ko": "Jenkins 연결 테스트가 수행되었다고 보고했지만, 이는 학습 과제의 일부 작업일 뿐 전체 과제의 완료나 상태 변경을 확정하지 않습니다.",
+    "decision": "no_change",
+    "clarification_reason_ko": null,
+    "changes": []
+  },
+  "parse_error": null
+}

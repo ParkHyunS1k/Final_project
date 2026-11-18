@@ -1,0 +1,42 @@
+{
+  "id": "GH-TL-1182897217",
+  "variant": "local",
+  "model_requested": "local",
+  "model_reported": "C:\\models\\Qwen3.5-4B-Q4_K_M.gguf",
+  "reasoning_effort": null,
+  "runner": "local_chat_completions",
+  "authentication": "eval_api_key",
+  "adapter_sha256": "base",
+  "sampling": {
+    "temperature": 0,
+    "seed": 7,
+    "max_tokens": 1024
+  },
+  "started_at": "2026-11-16T11:47:04.084477+00:00",
+  "elapsed_seconds": 3.215,
+  "retries": 0,
+  "status": "success",
+  "api_status": "completed",
+  "incomplete_details": null,
+  "http_error": null,
+  "error_detail": null,
+  "refusal": false,
+  "prompt_sha256": "1302a0727e3bb4af5908dff497bc405f25ba719ec7731008d1c6af61d55b9a7b",
+  "schema_sha256": "6f7b3a41eefe8ec45b4fb4dc4a18efd4de090a4c92585716e6de9565d964cf6e",
+  "candidates_sha256": "4c652cc8910032d492af19d594f2f59866c51508348a96d4559b2d994f521b45",
+  "usage": {
+    "input_tokens": 1216,
+    "cached_input_tokens": 0,
+    "output_tokens": 180,
+    "reasoning_output_tokens": 0
+  },
+  "tool_calls": [],
+  "response": {
+    "id": "GH-TL-1182897217",
+    "summary_ko": "현재 작업 목록에는 'issue-125'가 열려 있고, 해당 작업의 토론 스레드에서 '보낸 쪽지 ID +1'을 시도하여 확인을 요청하는 내용이 포함되어 있습니다.",
+    "decision": "needs_clarification",
+    "clarification_reason_ko": "excerpt[0]는 '보낸 쪽지 ID +1'을 시도하라는 제안이나 확인 요청일 뿐이며, 작업이 완료되었거나 특정 상태 변경이 확정된 사실은 아닙니다. 또한, 이 제안이 'issue-125'의 어떤 부분 (예: 테스트 단계, 코드 수정, 기능 구현) 에 적용되는지 명확하지 않습니다.",
+    "changes": []
+  },
+  "parse_error": null
+}
