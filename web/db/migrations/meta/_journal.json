@@ -47,50 +47,71 @@
     {
       "idx": 6,
       "version": "7",
-      "when": 1792081678204,
-      "tag": "0006_career_growth",
+      "when": 1792978040909,
+      "tag": "0006_peer_reviews",
       "breakpoints": true
     },
     {
       "idx": 7,
       "version": "7",
-      "when": 1792081678205,
-      "tag": "0007_unified_hub",
+      "when": 1793681087650,
+      "tag": "0007_learning_review",
       "breakpoints": true
     },
     {
       "idx": 8,
       "version": "7",
-      "when": 1792081678206,
-      "tag": "0008_team_interest_invitations",
+      "when": 1793946455371,
+      "tag": "0008_peer_review_half_points",
       "breakpoints": true
     },
     {
       "idx": 9,
       "version": "7",
-      "when": 1792081678207,
-      "tag": "0009_merge_project_policy",
+      "when": 1794036853686,
+      "tag": "0009_career_hub",
       "breakpoints": true
     },
     {
       "idx": 10,
       "version": "7",
-      "when": 1793681087661,
-      "tag": "0010_peer_reviews",
+      "when": 1794136724584,
+      "tag": "0010_github_accounts",
       "breakpoints": true
     },
     {
       "idx": 11,
       "version": "7",
-      "when": 1793681087662,
-      "tag": "0011_learning_review",
+      "when": 1794189069141,
+      "tag": "0011_github_issue_import",
       "breakpoints": true
     },
     {
       "idx": 12,
       "version": "7",
-      "when": 1793702237556,
-      "tag": "0012_career_profile_writes",
+      "when": 1794588367131,
+      "tag": "0012_task_touched_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794757089832,
+      "tag": "0013_checkin_report",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794759172472,
+      "tag": "0014_checkin_author",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1794907451368,
+      "tag": "0015_public_profile",
       "breakpoints": true
     }
   ]

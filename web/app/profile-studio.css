@@ -341,33 +341,6 @@
   font-size: 11px;
   padding: 6px 8px;
 }
-.studio-activity {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 36px;
-  border: 1px solid #91a69944;
-  border-radius: 18px;
-  padding: 26px;
-}
-.studio-activity h3 {
-  font-size: 21px;
-  font-weight: 700;
-}
-.studio-activity small,
-.studio-activity span {
-  font-size: 12px;
-  display: block;
-  opacity: 0.7;
-}
-.studio-activity strong {
-  font-size: 25px;
-}
-.studio-activity > .cf-help {
-  flex: 1;
-  min-width: 220px;
-  max-width: 500px;
-}
 @media (max-width: 900px) {
   .kg-layout {
     grid-template-columns: 1fr;
@@ -392,15 +365,4 @@
   .kg-node {
     transition: none;
   }
-}
-
-.resume-editor summary {
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.7;
-  margin: 16px 0;
-}
-.resume-editor[open] summary {
-  margin-bottom: 24px;
 }

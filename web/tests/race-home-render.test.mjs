@@ -94,24 +94,57 @@ void test('카운트다운: 대기 중 문구 3가지', () => {
   assert.match(text(focus([task(1, 1, 'A', NOW + H)])), /배정된 내 업무 없음 · 대기 중/);
 });
 
-void test('체크인 현황: 참여 중인 팀원만, 지금 업무와 오늘 보고 여부, 내 줄 표시', () => {
+// 2026-11-16 오늘의 랩 기록 피드: 체크인 여부만 보이던 목록을 서로의 오늘 기록을 읽는 피드로.
+const at = (ms) => new Date(ms).toISOString();
+void test('랩 기록 피드: 참여 중인 팀원만, 기록한 사람 먼저, 오늘 한 일·업무별 막힘·남은 합계, 내 줄 표시', () => {
   const members = [
-    { display_name: '도윤', person: 0, left_at: null },
     { display_name: '서연', person: 1, left_at: null },
+    { display_name: '도윤', person: 0, left_at: null },
     { display_name: '나감', person: 2, left_at: '2026-11-01T00:00:00.000Z' },
   ];
-  const tasks = [task(1, 0, 'DB 구축', NOW + H), task(2, 1, '화면 시안', NOW + 2 * H)];
-  const checkins = [{ task_id: 1, created_at: new Date(NOW - 60000).toISOString() }];
+  const tasks = [task(1, 0, 'DB 구축', NOW + H), task(2, 0, 'API', NOW + 2 * H), task(3, 1, '화면 시안', NOW + 3 * H)];
+  const checkins = [
+    { id: 'c1', task_id: 1, note: '스키마 확정', remaining: 3, created_at: at(NOW - 60000), report_id: 'rp_1', blocker: null },
+    { id: 'c2', task_id: 2, note: '스키마 확정', remaining: 2, created_at: at(NOW - 60000), report_id: 'rp_1', blocker: '토큰 만료 규칙 미정' },
+    { id: 'c3', task_id: 3, note: '시안 초안', remaining: 4, created_at: at(NOW - 24 * H), report_id: null, blocker: null },
+  ];
   const html = renderToString(
     createElement(TeamCheckins, { members, me: { person: 0 }, tasks, checkins, now: NOW, active: true }),
   );
-  const rows = html.split('race-checkin-row').slice(1).map(text);
+  const all = text(html);
+  assert.match(all, /오늘의 랩 기록/);
+  assert.match(all, /1 \/ 2명 기록/);
+  assert.match(all, /막힘 1/);
+  const rows = html.split('class="lap-feed-item').slice(1).map(text);
   assert.equal(rows.length, 2);
-  assert.match(rows[0], /도윤.*나.*DB 구축.*오늘 체크인 완료/);
-  assert.match(rows[1], /서연.*화면 시안.*아직 체크인 안 함/);
+  assert.match(rows[0], /도윤.*나.*11:59.*스키마 확정/);
+  assert.match(rows[0], /PM-2 · 토큰 만료 규칙 미정/);
+  assert.match(rows[0], /업무 2개.*남은 5h/);
+  assert.doesNotMatch(rows[0], /스키마 확정.*스키마 확정/);
+  assert.match(rows[1], /서연.*아직 안 함/);
+  assert.match(rows[1], /마지막 기록 11\/01 12:00.*시안 초안/);
 });
 
-void test('체크인 현황: 지금 업무는 카운트다운과 같이 마감이 가장 가까운 업무', () => {
+void test('랩 기록 피드: 보고 당시 담당자 기준(재배정돼도 그대로), 팀장이 대신 쓴 기록 표시, 완료 수는 보고 당시 값', () => {
+  const members = [
+    { display_name: '도윤', person: 0, left_at: null },
+    { display_name: '서연', person: 1, left_at: null },
+  ];
+  // 업무 1은 서연이 보고한 뒤 도윤에게 재배정됐고, 업무 2는 보고 뒤 완료됐다.
+  const tasks = [task(1, 0, 'DB 구축', NOW + H), task(2, 1, 'API', NOW + 2 * H, { done: true })];
+  const checkins = [
+    { id: 'c1', task_id: 1, note: '서연 기록', remaining: 3, created_at: at(NOW - 60000), report_id: 'rp_1', blocker: null, person: 1, author_person: 0, done: false },
+    { id: 'c2', task_id: 2, note: '서연 기록', remaining: 2, created_at: at(NOW - 60000), report_id: 'rp_1', blocker: null, person: 1, author_person: 0, done: false },
+  ];
+  const html = renderToString(createElement(TeamCheckins, { members, me: { person: 0 }, tasks, checkins, now: NOW, active: true }));
+  const rows = html.split('class="lap-feed-item').slice(1).map(text);
+  assert.match(rows[0], /서연.*도윤님이 대신 기록.*서연 기록/);
+  assert.doesNotMatch(rows[0], /완료 1/);
+  assert.match(rows[1], /도윤.*아직 안 함/);
+  assert.doesNotMatch(rows[1], /서연 기록/);
+});
+
+void test('랩 기록 피드: 기록이 없는 사람은 지금 업무(카운트다운과 같은 가장 가까운 마감)를 보인다', () => {
   const members = [{ display_name: '도윤', person: 0, left_at: null }];
   const tasks = [task(1, 0, '먼 업무', NOW + 100 * H), task(2, 0, '가까운 업무', NOW + H)];
   const t = text(
@@ -123,14 +156,14 @@ void test('체크인 현황: 지금 업무는 카운트다운과 같이 마감�
   assert.doesNotMatch(t, /먼 업무/);
 });
 
-void test('체크인 현황: 진행 중이 아니면 체크인 여부 배지를 보여주지 않는다', () => {
+void test('랩 기록 피드: 진행 중이 아니면 기록 여부 표시를 하지 않는다', () => {
   const members = [{ display_name: '도윤', person: 0, left_at: null }];
   const t = text(
     renderToString(
       createElement(TeamCheckins, { members, me: { person: 0 }, tasks: [], checkins: [], now: NOW, active: false }),
     ),
   );
-  assert.doesNotMatch(t, /체크인 안 함|체크인 완료/);
+  assert.doesNotMatch(t, /아직 안 함|명 기록/);
 });
 
 void test('캘린더: 진행 중에만 칩 단계, 오늘 aria-current, 병목 표시 없음', () => {
@@ -210,4 +243,72 @@ void test('캘린더 칩: 마감 초과는 빨강, 완료는 취소선', () => {
   assert.match(rule('.deadline-card.late'), /--red-/);
   assert.doesNotMatch(rule('.deadline-card.late'), /--heat-/);
   assert.match(rule('.deadline-card.done .deadline-title'), /line-through/);
+});
+
+// 홈 시안 v9(2026-11-09): 마감 정해진 내 업무가 없으면 프로젝트 마감까지 세고, 상단 시계에 이름표를 붙인다.
+void test('카운트다운: 마감 정해진 내 업무가 없으면 프로젝트 마감까지 센다', () => {
+  const html = renderToString(
+    createElement(FocusCountdown, {
+      tasks: [task(1, 0, 'A', null)],
+      person: 0,
+      now: NOW,
+      deadline: new Date(NOW + 3 * H).toISOString(),
+    }),
+  );
+  assert.match(text(html), /프로젝트 마감까지/);
+  assert.match(text(html), /03:00:00/);
+  assert.match(html, /role="timer"/);
+  assert.doesNotMatch(text(html), /대기 중/);
+});
+
+void test('상단 시계: 진행 중이면 프로젝트 마감 이름표를 붙인다', () => {
+  const clock = renderToString(
+    createElement(RaceClock, {
+      lifecycle: 'active',
+      deadline: new Date(NOW + 5 * H).toISOString(),
+      asOf: new Date(NOW).toISOString(),
+      durationDays: 7,
+      onZero: () => {},
+    }),
+  );
+  assert.match(text(clock), /프로젝트 마감/);
+  assert.match(text(clock), /05:00:00/);
+});
+
+void test('시안 v7대로: 체크인 안내 문장과 캘린더의 마감 미정 링크가 없다', () => {
+  const members = [{ display_name: '도윤', person: 0, left_at: null }];
+  const checks = text(
+    renderToString(
+      createElement(TeamCheckins, { members, me: { person: 0 }, tasks: [], checkins: [], now: NOW, active: true }),
+    ),
+  );
+  assert.doesNotMatch(checks, /하루 한 번/);
+  const cal = text(
+    renderToString(
+      createElement(DeadlineCalendar, {
+        startedAt: new Date(NOW - H).toISOString(),
+        deadline: new Date(NOW - H + 168 * H).toISOString(),
+        now: NOW,
+        tasks: [task(1, 0, 'A', null)],
+        people: [{ name: '도윤' }],
+        onPlan: () => {},
+        active: true,
+      }),
+    ),
+  );
+  assert.doesNotMatch(cal, /마감 미정/);
+});
+
+// 2026-11-12 피드백: 큰 카운트다운은 0.01초 단위까지 보인다.
+void test('카운트다운: 큰 숫자는 0.01초 단위까지 보인다', () => {
+  assert.match(text(focus([task(1, 0, 'DB 구축', NOW + 2 * H + 1500)])), /02:00:01\.50/);
+  const project = renderToString(
+    createElement(FocusCountdown, {
+      tasks: [],
+      person: 0,
+      now: NOW,
+      deadline: new Date(NOW + 3 * H).toISOString(),
+    }),
+  );
+  assert.match(text(project), /03:00:00\.00/);
 });

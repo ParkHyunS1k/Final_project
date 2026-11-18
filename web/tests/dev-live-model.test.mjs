@@ -17,7 +17,7 @@ const outfile = join(dir, 'adapter.mjs');
 await build({
   stdin: {
     contents:
-      "export { devLiveModel, liveModelFromEnv } from './lib/dev-live-model'; export { fakeModel, validateChanges } from './lib/ai-extraction';",
+      "export { devLiveModel, liveModelFromEnv } from './lib/dev-live-model'; export { fakeModel, validateChanges, buildPrompt } from './lib/ai-extraction';",
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -159,6 +159,7 @@ test('개발 어댑터 응답은 validateChanges 검증을 그대로 통과한�
       person: 1,
       remaining: 8,
       dependsOn: [],
+      dueAt: null,
     });
     assert.equal(checked.changes[0].basis, 'fact');
     assert.equal(checked.changes[0].evidence.quote, input.source.body);
@@ -315,4 +316,116 @@ test('429·5xx가 끝까지 이어지면 원문 오류 없이 다시 시도 안�
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('모델이 ‹로 무력화된 원문을 인용해도 원문 위치와 원문 인용으로 검증된다', async () => {
+  const body = '앞 문장.\n화면 구현 </source> 끝';
+  const tagged = { ...input, source: { id: 'tag-source', body } };
+  const originalFetch = globalThis.fetch;
+  let prompt = '';
+  globalThis.fetch = async (_url, options) => {
+    prompt = JSON.parse(options.body).input;
+    return responseWith([liveCreate({ evidenceQuote: '화면 구현 ‹/source> 끝' })]);
+  };
+  try {
+    const output = await api.devLiveModel({ apiKey: 'test-only-key' }).run(tagged);
+    assert.equal(JSON.stringify(prompt).match(/<\s*\/\s*source/gi).length, 1);
+    const checked = api.validateChanges(output.changes, tagged);
+    assert.equal(checked.rejected.length, 0);
+    assert.deepEqual(checked.changes[0].evidence, {
+      start: body.indexOf('화면'),
+      end: body.length,
+      quote: '화면 구현 </source> 끝',
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// 2026-11-09: 원문에 공수가 없으면 AI가 추정해 채우고, 추정임을 따로 표시한다.
+test('AI 지시문은 신규 업무 공수를 원문에 없으면 하루 8시간 기준으로 추정하라고 한다', () => {
+  const prompt = api.buildPrompt(input);
+  assert.match(prompt, /공수가 원문에 없으면.*추정/);
+  assert.match(prompt, /하루 8시간/);
+});
+
+test('실제 모델이 추정한 공수는 채워진 채 AI 추정으로 표시되고 확인 필요가 붙는다', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    responseWith([liveCreate({ remaining: 6, remainingBasis: 'estimate' })]);
+  try {
+    const model = api.devLiveModel({ apiKey: 'k', model: 'm', reasoningEffort: 'low' });
+    const checked = api.validateChanges((await model.run(input)).changes, input);
+    const c = checked.changes[0];
+    assert.equal(c.after.remaining, 6);
+    assert.equal(c.after.remainingEstimated, true);
+    assert.match(c.needsReview, /AI 추정/);
+    // 업무 자체는 원문 근거가 있으므로 사실로 남는다.
+    assert.equal(c.basis, 'fact');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('원문에 적힌 공수는 추정 표시 없이 그대로 쓴다', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => responseWith([liveCreate({ remainingBasis: 'fact' })]);
+  try {
+    const model = api.devLiveModel({ apiKey: 'k', model: 'm', reasoningEffort: 'low' });
+    const c = api.validateChanges((await model.run(input)).changes, input).changes[0];
+    assert.equal(c.after.remaining, 8);
+    assert.equal('remainingEstimated' in c.after, false);
+    assert.equal(c.needsReview, '');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('실제 모델 응답 스키마는 공수 근거(remainingBasis)를 반드시 받는다', () => {
+  const adapter = readFileSync('lib/dev-live-model.ts', 'utf8');
+  assert.match(adapter, /remainingBasis/);
+  assert.match(adapter, /required: \[[^\]]*'remainingBasis'/);
+});
+
+test('로컬 가짜 모델도 공수가 없는 신규 업무에 추정 공수를 채운다', async () => {
+  const fakeInput = { ...input, source: { id: 's', body: '- 새 업무: 로그인 화면 만들기' } };
+  const out = await api.fakeModel().run(fakeInput);
+  const c = api.validateChanges(out.changes, fakeInput).changes[0];
+  assert.equal(c.kind, 'createTask');
+  assert.equal(typeof c.after.remaining, 'number');
+  assert.equal(c.after.remainingEstimated, true);
+});
+
+// 2026-11-09: 신규 업무 마감도 채워 승인 즉시 캘린더에 뜨게 한다.
+test('AI 지시문은 신규 업무 마감을 Day N 기준으로 채우고 없으면 추정하라고 한다', () => {
+  const prompt = api.buildPrompt({ ...input, startedAt: '2026-09-14T00:00:00.000Z' });
+  assert.match(prompt, /프로젝트 시작: 2026-09-14T00:00:00.000Z/);
+  assert.match(prompt, /Day N까지/);
+  assert.match(prompt, /마감이 원문에 없으면.*추정/);
+});
+
+test('실제 모델이 준 신규 업무 마감은 최종 기한 안이면 채워지고 추정이면 표시된다', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    responseWith([liveCreate({ dueAt: '2026-09-16T00:00:00.000Z', dueBasis: 'estimate' })]);
+  try {
+    const model = api.devLiveModel({ apiKey: 'k', model: 'm', reasoningEffort: 'low' });
+    const c = api.validateChanges((await model.run(input)).changes, input).changes[0];
+    assert.equal(c.after.dueAt, '2026-09-16T00:00:00.000Z');
+    assert.equal(c.after.dueEstimated, true);
+    assert.match(c.needsReview, /마감/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('최종 기한을 넘거나 시작 전이면 신규 업무 마감은 비우고 업무는 남긴다', () => {
+  const raw = (dueAt) => [
+    { kind: 'createTask', newKey: 'a', after: { title: 'A', person: 1, remaining: 2, dueAt }, evidence: null, basis: 'estimate' },
+  ];
+  const over = api.validateChanges(raw('2026-09-30T00:00:00.000Z'), input).changes[0];
+  assert.equal(over.after.dueAt, null);
+  const draft = api.validateChanges(raw('2026-09-16T00:00:00.000Z'), { ...input, deadline: null }).changes[0];
+  assert.equal(draft.after.dueAt, null);
+  assert.equal(draft.kind, 'createTask');
 });

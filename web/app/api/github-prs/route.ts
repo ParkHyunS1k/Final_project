@@ -1,0 +1,86 @@
+// PR과 업무 연결(2026-11-14). 프로젝트 멤버가 업무 화면을 열 때 등록된 저장소의 PR을 읽어 업무별로 묶어 돌려준다.
+// PR 본문의 fixes #이슈로 그 이슈에서 만든 업무에도 붙인다(2026-11-16).
+// 업무별 출처 이슈(issues)도 함께 준다(2026-11-15). ?issuesOf=업무번호면 그 업무의 출처 이슈를 GitHub에서 다시 읽어 닫힘·변경을 알린다.
+// 읽기만 한다. ?pulls=가 있으면 고른 PR의 개발 현황(CI·리뷰·커밋)만 읽는다. 연결은 저장하지 않고, 업무 상태도 바꾸지 않는다. PR 제목·브랜치는 데이터다.
+import { identity, AuthUnavailable, member, AccessError } from '@/lib/projects';
+import { readSprint } from '@/lib/sprint-store';
+import { PolicyError } from '@/lib/sprint-policy';
+import { assertPublicRepo, ReviewSourceError } from '@/lib/ai-review-github';
+import { github } from '@/lib/ai-review-runtime';
+import { readProjectRepo, taskIssueBlocks, taskIssueLinks } from '@/lib/project-repo';
+import { readIssueStatus } from '@/lib/github-issues';
+import { DETAIL_MAX_PULLS, linkPulls, listPulls, pullDetail } from '@/lib/github-prs';
+export const dynamic = 'force-dynamic';
+
+function reply(value: unknown, status = 200) {
+  return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
+}
+
+export async function GET(request: Request) {
+  const user = await identity(request);
+  if (user instanceof AuthUnavailable) return reply({ error: user.message }, user.status);
+  if (!user) return reply({ error: '로그인이 필요합니다.' }, 401);
+  try {
+    const params = new URL(request.url).searchParams;
+    const projectId = params.get('project') ?? '';
+    await member(projectId, user);
+    // ?pulls=10,12 : 업무 상세를 열 때 그 업무 PR의 CI·리뷰·최근 커밋(개발 현황, 2026-11-14).
+    const wanted = params.get('pulls');
+    const numbers = wanted === null ? null : wanted.split(',').map(Number);
+    if (numbers && (numbers.length > DETAIL_MAX_PULLS || numbers.some((n) => !Number.isInteger(n) || n < 1)))
+      return reply({ error: `PR 번호를 ${DETAIL_MAX_PULLS}개까지 골라주세요.` }, 400);
+    const issuesOf = params.get('issuesOf');
+    if (issuesOf !== null) {
+      const taskId = Number(issuesOf);
+      if (!Number.isInteger(taskId) || taskId < 1) return reply({ error: '업무 번호가 올바르지 않습니다.' }, 400);
+      // ponytail: 업무당 출처 이슈 3개까지만 읽는다(GitHub 호출 한도). AI가 여러 이슈를 한 업무로 합치는 일은 드물다.
+      const blocks = (await taskIssueBlocks(projectId, taskId)).slice(0, DETAIL_MAX_PULLS);
+      const checked = new Set<string>();
+      const issues = [];
+      for (const b of blocks) {
+        const [owner, name] = b.repo.split('/');
+        const at = { owner, name };
+        // 가져온 뒤 비공개로 바뀐 저장소는 읽지 않는다.
+        if (!checked.has(b.repo.toLowerCase())) await assertPublicRepo(at, github);
+        checked.add(b.repo.toLowerCase());
+        issues.push(await readIssueStatus(at, b.number, b.block, github));
+      }
+      return reply({ issues });
+    }
+    const repo = await readProjectRepo(projectId);
+    if (numbers) {
+      if (!repo) return reply({ details: {} });
+      await assertPublicRepo(repo, github);
+      const details = await Promise.all(numbers.map((n) => pullDetail(repo, n, github)));
+      return reply({ details: Object.fromEntries(details.map((d) => [d.number, d])) });
+    }
+    const issues = await taskIssueLinks(projectId);
+    if (!repo) return reply({ repo: null, links: {}, issues });
+    const sprint = await readSprint(projectId);
+    let pulls;
+    try {
+      pulls = await listPulls(repo, github);
+    } catch (error) {
+      // 출처 이슈 연결은 DB 값이라 PR을 못 읽어도(비공개 전환·호출 한도) 함께 준다.
+      if (error instanceof ReviewSourceError) return reply({ error: error.message, issues }, error.status);
+      throw error;
+    }
+    // fixes #n은 등록된 저장소의 이슈라서, 그 저장소에서 가져온 출처 이슈만 업무에 잇는다.
+    const here = `${repo.owner}/${repo.name}`.toLowerCase();
+    const byIssue: Record<number, number[]> = {};
+    for (const [taskId, list] of Object.entries(issues))
+      for (const l of list) if (l.repo.toLowerCase() === here) (byIssue[l.number] ??= []).push(Number(taskId));
+    return reply({
+      // PR 목록을 읽은 서버 시각. 화면은 멈춘 업무를 이 시각 기준으로 판정한다(이후 PR 활동은 모름).
+      asOf: new Date().toISOString(),
+      repo: { owner: repo.owner, name: repo.name, url: `https://github.com/${repo.owner}/${repo.name}` },
+      links: linkPulls(pulls, (sprint?.tasks ?? []).map((t) => t.id), byIssue),
+      issues,
+    });
+  } catch (error) {
+    if (error instanceof AccessError || error instanceof PolicyError || error instanceof ReviewSourceError)
+      return reply({ error: error.message }, error.status);
+    console.error('github prs request failed', error);
+    return reply({ error: 'PR을 불러오지 못했습니다.' }, 503);
+  }
+}

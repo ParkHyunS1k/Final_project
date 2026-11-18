@@ -108,6 +108,7 @@ test('새 프로젝트는 비공개라 목록에 없고, 팀장이 공개하면 
       goal: goalFields.goal,
       scope: goalFields.scope,
       completionCriteria: goalFields.completionCriteria,
+      skills: [],
       lifecycle: 'draft',
       goalVersion: 1,
       members: 1,
@@ -126,6 +127,15 @@ test('새 프로젝트는 비공개라 목록에 없고, 팀장이 공개하면 
   assert.ok(!(await teams('t-owner')).teams.some((t) => t.projectId === projectId));
   const log = await rows("SELECT detail FROM sprint_events WHERE owner=? AND action='set_listed'", projectId);
   assert.equal(log.length, 1);
+});
+
+test('직접 만들 때 팀으로 시작·공개를 고르면 바로 팀 찾기 목록에 오른다', async () => {
+  const projectId = await create('t-direct-owner', { listed: true });
+  assert.equal((await state('t-direct-owner', projectId)).listed, true);
+  assert.ok((await teams('t-direct-viewer')).teams.some((t) => t.projectId === projectId));
+  const solo = await create('t-direct-owner', { listed: false });
+  assert.equal((await state('t-direct-owner', solo)).listed, false);
+  await json(await projects('t-direct-owner', { action: 'create', ...goalFields, listed: 'yes' }), 400);
 });
 
 test('신청 → 팀장 승인으로 합류하고, 같은 신청은 한 번만 쌓인다', async () => {

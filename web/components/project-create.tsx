@@ -1,8 +1,9 @@
 'use client';
-// 새 프로젝트 만들기: 주사위 단어 3개(잠금), 한 줄 아이디어(선택), 기능 범위 5단계.
+// 새 프로젝트 만들기: 주사위 단어 3개(잠금), 한 줄 아이디어(선택), 기능 범위 3단계(템플릿과 같음).
 // 설계: docs/superpowers/specs/2026-10-29-idea-dice-create-design.md
 import { useState } from 'react';
 import { Dices, Lock, LockOpen } from 'lucide-react';
+import { restrictionMessage, type RestrictionView } from '@/lib/score';
 import {
   DEFAULT_LEVEL,
   SCOPE_LEVELS,
@@ -49,9 +50,12 @@ export function ScopeSlider({
 
 export function ProjectCreate({
   onSubmit,
+  restriction = null,
 }: {
   // true면 이동 중이므로 버튼을 계속 잠가 둔다(연타로 중복 생성 방지).
   onSubmit: (body: CreateBody) => Promise<boolean>;
+  /** 동료평가 미제출 금지. 있으면 만들기 버튼을 끈다(서버도 403으로 막는다). */
+  restriction?: RestrictionView | null;
 }) {
   // 만들기 패널은 클라이언트에서 목록을 불러온 뒤에만 열리므로 첫 굴림이 SSR과 어긋나지 않는다.
   const [words, setWords] = useState(() => roll(['', '', ''], [false, false, false]));
@@ -59,6 +63,8 @@ export function ProjectCreate({
   const [idea, setIdea] = useState('');
   const [level, setLevel] = useState(DEFAULT_LEVEL);
   const [agreed, setAgreed] = useState(false);
+  const [mode, setMode] = useState<'solo' | 'team'>('solo');
+  const [listed, setListed] = useState(false);
   const [busy, setBusy] = useState(false);
   const current = SCOPE_LEVELS[level - 1];
   return (
@@ -78,7 +84,7 @@ export function ProjectCreate({
           e.preventDefault();
           if (busy) return;
           setBusy(true);
-          void onSubmit(createBody({ words, idea, level, agreed })).then((ok) => {
+          void onSubmit(createBody({ words, idea, level, agreed, mode, listed })).then((ok) => {
             if (!ok) setBusy(false);
           });
         }}
@@ -126,6 +132,39 @@ export function ProjectCreate({
             <b>완료 기준</b> {current.criteria}
           </p>
         </div>
+        <fieldset className="hub-mode">
+          <legend>어떻게 시작할까요?</legend>
+          {(
+            [
+              ['solo', '혼자 시작'],
+              ['team', '팀으로 시작'],
+            ] as const
+          ).map(([value, label]) => (
+            <label key={value}>
+              <input
+                type="radio"
+                name="project-mode"
+                checked={mode === value}
+                onChange={() => setMode(value)}
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+        {mode === 'team' && (
+          <label className="hub-check-label">
+            <input
+              type="checkbox"
+              checked={listed}
+              onChange={(e) => setListed(e.target.checked)}
+            />
+            이름·목표·범위·완료 기준·인원을 팀 찾기에 공개하고 모집하기
+          </label>
+        )}
+        <p className="hub-note">
+          혼자 먼저 출발하고 나중에 초대해도 돼요. 공개 여부는 나중에 프로젝트
+          화면의 팀원 목록 아래에서도 바꿀 수 있어요.
+        </p>
         <label className="agreement">
           <input
             type="checkbox"
@@ -136,7 +175,12 @@ export function ProjectCreate({
           목표·기능 범위·완료 기준을 확인했습니다. 시작 후에는 바꿀 수 없으며
           실제 결제는 발생하지 않습니다.
         </label>
-        <button className="btn primary" disabled={busy}>
+        {restriction && (
+          <output className="hint restriction-hint">
+            {restrictionMessage(restriction, '새 프로젝트를 만들')}
+          </output>
+        )}
+        <button className="btn primary" disabled={busy || Boolean(restriction)}>
           {busy ? '저장 중…' : '프로젝트 만들기'}
         </button>
       </form>

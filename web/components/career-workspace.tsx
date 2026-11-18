@@ -22,6 +22,7 @@ import { ThemeToggle } from './theme-toggle';
 import { CareerIntroduction } from './career-introduction';
 import { CareerTechnologies } from './career-technologies';
 import { CareerAnalysisReview } from './career-analysis-review';
+import { ExperienceForm } from './experience-form';
 import { apiFetch, signInWithGoogle } from '@/lib/supabase-browser';
 import {
   SKILLS,
@@ -164,6 +165,9 @@ export function CareerWorkspace({
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [teamLoading, setTeamLoading] = useState(false);
+  const [editing, setEditing] = useState(false);
+  // 가져온 공고·본문으로 한 번 저장하면 그 뒤에는 결과를 먼저 보인다.
+  const [prefillSaved, setPrefillSaved] = useState(false);
   const prefillApplied = useRef(false);
   const hydrate = useCallback(
     (value: Personal) => {
@@ -321,6 +325,8 @@ export function CareerWorkspace({
         consent,
       });
       hydrate(await request<Personal>('/api/career'));
+      setEditing(false);
+      setPrefillSaved(true);
       setNotice(
         '근거와 추천을 저장했습니다. 프로젝트 추천에서 다음 경험을 골라보세요.',
       );
@@ -357,6 +363,11 @@ export function CareerWorkspace({
   const writable =
     team && ['draft', 'active'].includes(team.lifecycle) && team.me.agreed;
   const profile = data?.profile;
+  // 저장한 이력서가 있으면 분석 결과를 먼저 보이고 양식은 '수정하기'에서 연다. 가져온 공고·본문이 있으면 바로 연다.
+  const showForm =
+    !profile ||
+    editing ||
+    (Boolean(prefillPosting || prefillEvidence) && !prefillSaved);
   const imported = data?.experiences.filter((e) => e.valid) ?? [];
   const Content = embedded ? 'section' : 'main';
   return (
@@ -375,7 +386,6 @@ export function CareerWorkspace({
       <Content className="cf-main">
         <div className="cf-intro">
           <div>
-            <p className="eyebrow">YOUR NEXT EXPERIENCE</p>
             <h1>
               나의 경험에서,
               <br />
@@ -452,27 +462,17 @@ export function CareerWorkspace({
         )}
         {data && section === 'profile' && (
           <>
-            <div className="cf-columns">
-              <section className="cf-card">
-                <div className="cf-card-heading">
-                  <div>
-                    <p className="eyebrow">01 · PROFILE</p>
-                    <h2>경험과 목표를 알려주세요</h2>
+            <div className={showForm ? 'cf-columns' : 'cf-columns cf-results'}>
+              {showForm && (
+                <section className="cf-card">
+                  <div className="cf-card-heading">
+                    <div>
+                      <h2>경험과 목표를 알려주세요</h2>
+                    </div>
+                    {profile && (
+                      <span className="cf-chip">프로필 v{profile.version}</span>
+                    )}
                   </div>
-                  {profile && (
-                    <span className="cf-chip">프로필 v{profile.version}</span>
-                  )}
-                </div>
-                <details
-                  className="resume-editor"
-                  key={profile ? 'saved' : 'new'}
-                  open={!profile}
-                >
-                  <summary>
-                    {profile
-                      ? `저장된 이력서 수정: ${profile.resumeName}`
-                      : '이력서 입력하기'}
-                  </summary>
                   <form onSubmit={saveProfile} className="cf-form">
                     <fieldset disabled={busy}>
                       <label>
@@ -671,11 +671,30 @@ export function CareerWorkspace({
                       </button>
                     </fieldset>
                   </form>
-                </details>
-              </section>
+                </section>
+              )}
               <div className="cf-stack">
+                {!showForm && profile && (
+                  <section className="cf-card cf-resume-bar">
+                    <div>
+                      <h2>{profile.resumeName}</h2>
+                      <p>
+                        {[
+                          `프로필 v${profile.version}`,
+                          TARGETS.find((t) => t.id === profile.targetRole)
+                            ?.name,
+                          profile.targetPosting && '비교 공고 있음',
+                        ]
+                          .filter(Boolean)
+                          .join(', ')}
+                      </p>
+                    </div>
+                    <button className="btn" onClick={() => setEditing(true)}>
+                      이력서 수정하기
+                    </button>
+                  </section>
+                )}
                 <section className="cf-card">
-                  <p className="eyebrow">MY TECHNOLOGIES</p>
                   <h2>나의 기술과 경험</h2>
                   {profile ? (
                     <>
@@ -817,7 +836,6 @@ export function CareerWorkspace({
           <section>
             <div className="cf-section-heading">
               <div>
-                <p className="eyebrow">02 · NEXT PROJECT</p>
                 <h2>기여하면서 성장하는 7일</h2>
                 <p>
                   직접 설계한 학습 프로젝트입니다. 공개 모집 공고가 아니며,
@@ -980,11 +998,6 @@ export function CareerWorkspace({
           <>
             <div className="cf-section-heading">
               <div>
-                <p className="eyebrow">
-                  {section === 'team'
-                    ? '03 · TEAM & TASKS'
-                    : '04 · EXPERIENCE LOOP'}
-                </p>
                 <h2>
                   {section === 'team'
                     ? '각자의 강점을, 팀의 실행으로'
@@ -1482,64 +1495,5 @@ export function CareerWorkspace({
         <span>CareerFlow × ProjectMate</span>
       </footer>
     </div>
-  );
-}
-function ExperienceForm({
-  task,
-  busy,
-  onSave,
-}: {
-  task: Team['myCompletedTasks'][number];
-  busy: boolean;
-  onSave: (values: Record<string, unknown>) => Promise<void>;
-}) {
-  const [skills, setSkills] = useState<SkillId[]>([]);
-  const [contribution, setContribution] = useState('');
-  return (
-    <form
-      className="cf-experience cf-form"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void onSave({ skillIds: skills, contribution, confirmed: true });
-      }}
-    >
-      <fieldset disabled={busy}>
-        <h4>{task.title}</h4>
-        <blockquote>{task.evidence}</blockquote>
-        <legend className="sr-only">개인 기여 확인</legend>
-        <p>실제로 직접 수행한 역량만 선택해주세요.</p>
-        <div className="cf-choice-grid">
-          {task.skills.map((s) => (
-            <label key={s}>
-              <input
-                type="checkbox"
-                checked={skills.includes(s)}
-                onChange={() => setSkills(toggle(skills, s))}
-              />
-              {skillName(s)}
-            </label>
-          ))}
-        </div>
-        <label>
-          구체적인 본인 기여
-          <textarea
-            required
-            minLength={10}
-            maxLength={1000}
-            rows={3}
-            value={contribution}
-            onChange={(e) => setContribution(e.target.value)}
-            placeholder="직접 구현·검증한 부분과 협업한 부분을 구분해주세요."
-          />
-        </label>
-        <label className="cf-agreement">
-          <input type="checkbox" required />위 근거와 설명이 본인이 수행한
-          내용을 나타내는지 확인했습니다.
-        </label>
-        <button className="btn" disabled={busy || !skills.length}>
-          경험 기록에 추가하기
-        </button>
-      </fieldset>
-    </form>
   );
 }

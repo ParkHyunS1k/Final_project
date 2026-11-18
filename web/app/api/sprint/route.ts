@@ -28,12 +28,14 @@ import {
   PolicyError,
   startReadiness,
 } from '@/lib/sprint-policy';
+import { assertNotRestricted } from '@/lib/sanction';
 import {
   assertEvidence,
   completionCheck,
   taskCompletionCheck,
 } from '@/lib/deliverables';
 import { cancelStatements, scheduleStatements } from '@/lib/reminder-store';
+import { parseReport, reportDetail } from '@/lib/lap-report';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -207,6 +209,8 @@ export async function POST(request: Request) {
         ['draft'],
       );
     } else if (b.action === 'start') {
+      // 시작은 팀장이 한다. 동료평가 미제출로 금지 중이면 새 스프린트를 시작하지 못한다.
+      await assertNotRestricted(user.id, now, '스프린트를 시작할');
       const members = await readMembers(id);
       const deliverables = await readDeliverables(id);
       const check = startReadiness(
@@ -419,6 +423,50 @@ export async function POST(request: Request) {
             ),
           bumpTaskVersion(id, m, t.id),
         ],
+        [...open],
+      );
+    } else if (b.action === 'report') {
+      // 오늘의 랩 기록(2026-11-16): 여러 업무의 남은 시간·완료·막힌 점을 한 트랜잭션으로.
+      const { note, items } = parseReport(b, s.tasks, actor);
+      for (const it of items) {
+        it.task.remaining = it.remaining;
+        if (it.done) {
+          it.task.done = true;
+          it.task.evidence = it.evidence;
+        }
+      }
+      const reportId = 'rp_' + crypto.randomUUID();
+      await save(
+        id,
+        s,
+        'report',
+        reportDetail(items),
+        (m) =>
+          items.flatMap((it) => [
+            db
+              .prepare(
+                'INSERT INTO sprint_checkins(id,owner,task_id,note,remaining,created_at,report_id,blocker,person,author_person,done) SELECT ?,owner,?,?,?,?,?,?,?,?,? FROM sprints WHERE owner=? AND mutation=?',
+              )
+              .bind(
+                crypto.randomUUID(),
+                it.task.id,
+                note,
+                it.remaining,
+                timestamp,
+                reportId,
+                it.blocker,
+                // 보고 당시 담당자(재배정돼도 그날 기록은 그 사람 것)와 실제 작성자(팀장 대신 기록 구분).
+                it.task.person,
+                actor.person,
+                it.done,
+                id,
+                m,
+              ),
+            bumpTaskVersion(id, m, it.task.id),
+            ...(it.done
+              ? cancelStatements(id, m, { kind: 'task', taskId: it.task.id, reason: '업무 완료' })
+              : []),
+          ]),
         [...open],
       );
     } else if (b.action === 'task') {

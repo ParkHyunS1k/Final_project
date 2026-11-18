@@ -146,6 +146,7 @@ export async function saveProfile(
 export type Experience = {
   id: string;
   project_id: string;
+  project_title: string | null;
   task_id: number;
   task_version: number;
   task_title: string;
@@ -159,13 +160,51 @@ export type Experience = {
 export async function readExperiences(userId: string) {
   const result = await db()
     .prepare(`SELECT e.*,
-    (t.done=true AND t.evidence=e.evidence AND t.change_version=e.task_version AND t.person=m.person AND m.left_at IS NULL) AS valid
+    (t.done=true AND t.evidence=e.evidence AND t.change_version=e.task_version AND t.person=m.person AND m.left_at IS NULL) AS valid,
+    s.title AS project_title
     FROM career_experiences e LEFT JOIN sprint_tasks t ON t.owner=e.project_id AND t.id=e.task_id
+    LEFT JOIN sprints s ON s.owner=e.project_id
     LEFT JOIN project_members m ON m.project_id=e.project_id AND m.user_id=e.user_id
     WHERE e.user_id=? ORDER BY e.confirmed_at DESC`)
     .bind(userId)
     .all<Experience>();
   return result.results;
+}
+/**
+ * 아직 경험으로 가져오지 않은 내 완료 업무(모든 프로젝트). recordExperience와 같은 조건:
+ * 지금 참여 중인 본인 담당, 완료, 근거 5자 이상, 역량이 연결된 성장 과제.
+ * 같은 버전을 이미 가져왔으면 뺀다(업무가 바뀌면 다시 나온다).
+ */
+export async function pendingExperiences(userId: string) {
+  const result = await db()
+    .prepare(`SELECT t.owner AS project_id,s.title AS project_title,t.id AS task_id,t.change_version,t.title,t.evidence,l.skill_ids
+    FROM sprint_tasks t
+    JOIN project_members m ON m.project_id=t.owner AND m.person=t.person AND m.user_id=? AND m.left_at IS NULL
+    JOIN career_task_links l ON l.project_id=t.owner AND l.task_id=t.id
+    JOIN sprints s ON s.owner=t.owner
+    WHERE t.done=true AND jsonb_array_length(l.skill_ids)>0
+    AND NOT EXISTS(SELECT 1 FROM career_experiences e WHERE e.user_id=m.user_id AND e.project_id=t.owner AND e.task_id=t.id AND e.task_version=t.change_version AND e.evidence=t.evidence)
+    ORDER BY s.updated_at DESC,t.id`)
+    .bind(userId)
+    .all<{
+      project_id: string;
+      project_title: string;
+      task_id: number;
+      change_version: number;
+      title: string;
+      evidence: string;
+      skill_ids: SkillId[];
+    }>();
+  // 근거 길이는 recordExperience와 같은 JS 기준(trim 후 UTF-16 길이)으로 센다. SQL length와 다르다.
+  return result.results.filter((r) => r.evidence.trim().length >= 5).map((r) => ({
+    projectId: r.project_id,
+    projectTitle: r.project_title,
+    taskId: Number(r.task_id),
+    taskVersion: Number(r.change_version),
+    title: r.title,
+    evidence: r.evidence,
+    skills: r.skill_ids,
+  }));
 }
 export function experienceSkills(experiences: Experience[]): SkillEvidence[] {
   return experiences
@@ -654,7 +693,7 @@ export async function applyRoles(
             statements.push(
               db()
                 .prepare(
-                  'UPDATE sprint_tasks SET person=?,change_version=change_version+1 WHERE owner=? AND id=? AND EXISTS(SELECT 1 FROM sprints WHERE owner=? AND mutation=?)',
+                  'UPDATE sprint_tasks SET person=?,change_version=change_version+1,touched_at=now() WHERE owner=? AND id=? AND EXISTS(SELECT 1 FROM sprints WHERE owner=? AND mutation=?)',
                 )
                 .bind(person, projectId, id, projectId, mutation),
             );

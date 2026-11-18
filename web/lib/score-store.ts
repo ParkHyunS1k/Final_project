@@ -2,7 +2,7 @@
 // docs/superpowers/specs/2026-10-20-peer-score-badges-design.md.
 // 본인 결과만 돌려준다. 다른 사람의 점수·개별 평가·평가 시각은 내보내지 않는다.
 import { database, readSprint, readPolicy, readMembers, currentPlan, Conflict } from './sprint-store';
-import { member, listProjects, type Identity } from './projects';
+import { member, listProjects, projectRows, type Identity } from './projects';
 import { PolicyError } from './sprint-policy';
 import {
   badgeList,
@@ -10,28 +10,31 @@ import {
   MIN_REVIEWERS,
   parseReviews,
   peerScore,
+  penaltyDays,
   reportDays,
+  resultHidden,
   reviewWindow,
   summarize,
   type Rating,
 } from './score';
+import { reviewDuties } from './sanction';
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
 // 저장 시점의 DB 시각으로 평가 기간과 현재 멤버 여부를 다시 확인한다. reviewWindow와 같은 규칙.
 const OPEN_WINDOW =
   "EXISTS(SELECT 1 FROM project_policy p WHERE p.project_id=? AND (" +
-  "(p.lifecycle='completed' AND now() < p.completed_at + interval '7 days')" +
-  " OR (p.lifecycle IN ('active','expired') AND p.deadline_at <= now() AND now() < p.deadline_at + interval '7 days')))";
+  "(p.lifecycle='completed' AND now() < p.completed_at + interval '24 hours')" +
+  " OR (p.lifecycle IN ('active','expired') AND p.deadline_at <= now() AND now() < p.deadline_at + interval '24 hours')))";
 
 async function projectScore(projectId: string, userId: string, now: Date) {
   const db = database();
   const [policy, members] = await Promise.all([readPolicy(projectId), readMembers(projectId)]);
-  const window = reviewWindow(policy, now);
-  const [mine, received, checkins] = await db.batch<Record<string, unknown>>([
+  const [submissions, received, checkins] = await db.batch<Record<string, unknown>>([
+    // 제출 시각은 전원 제출 판정과 내 '평가 완료' 시각에만 쓰고 내보내지 않는다.
     db
-      .prepare('SELECT created_at FROM peer_review_submissions WHERE project_id=? AND reviewer_id=?')
-      .bind(projectId, userId),
+      .prepare('SELECT reviewer_id,created_at FROM peer_review_submissions WHERE project_id=?')
+      .bind(projectId),
     // 받은 평가는 평균 계산에만 쓰고 그대로 내보내지 않는다.
     db
       .prepare(
@@ -42,16 +45,32 @@ async function projectScore(projectId: string, userId: string, now: Date) {
   ]);
   const me = members.find((m) => m.userId === userId);
   const active = members.filter((m) => !m.leftAt);
-  const reviewedAt = (mine.results[0]?.created_at as Date | undefined) ?? null;
+  const submittedAt = new Map(
+    submissions.results.map((r) => [String(r.reviewer_id), new Date(r.created_at as Date)]),
+  );
+  const reviewedAt = submittedAt.get(userId) ?? null;
+  // 참여 중인 전원(2명 이상)이 냈으면 마지막 제출 시각에 공개한다.
+  const allSubmittedAt =
+    active.length >= 2 && active.every((m) => submittedAt.has(m.userId))
+      ? new Date(Math.max(...active.map((m) => submittedAt.get(m.userId)!.getTime())))
+      : null;
+  const window = reviewWindow(policy, now, allSubmittedAt);
   const closed = window.status === 'closed';
+  const end = endedAt(policy, now);
+  const hidden = resultHidden({
+    closed,
+    hadTargets: Boolean(me && !me.leftAt) && active.length >= 2,
+    reviewedAt,
+    endedAt: end,
+  });
   const ratings = received.results.map((r) => ({
     contribution: Number(r.contribution),
     communication: Number(r.communication),
     commitment: Number(r.commitment),
   })) as Rating[];
-  const result = peerScore(ratings, closed);
+  // 내지 않은 사람에게는 공개 뒤에도 점수·개인 뱃지를 가린다.
+  const result = peerScore(ratings, closed && !hidden);
 
-  const end = endedAt(policy, now);
   const completedAt = policy?.lifecycle === 'completed' ? policy.completedAt : null;
   let zeroBottleneck = false;
   if (policy && completedAt) {
@@ -67,7 +86,7 @@ async function projectScore(projectId: string, userId: string, now: Date) {
   const badges = badgeList({
     completedAt,
     endedAt: end,
-    closesAt: window.closesAt,
+    revealedAt: window.revealedAt,
     active: Boolean(me && !me.leftAt),
     solo: members.length === 1,
     daily:
@@ -94,7 +113,10 @@ async function projectScore(projectId: string, userId: string, now: Date) {
       closesAt: iso(window.closesAt),
       submitted: Boolean(reviewedAt),
       // 기간 중 인원 수가 바뀌는 것을 보면 누가 평가했는지 추정할 수 있어 마감 뒤에만 알린다.
-      reviewers: closed ? result.reviewers : null,
+      reviewers: closed && !hidden ? result.reviewers : null,
+      hidden,
+      // 내지 않으면 받을 금지 일수(null은 영구). 아직 낼 수 있을 때만.
+      penaltyDays: canReview ? penaltyDays((await reviewDuties(userId, now)).misses) : null,
       minReviewers: MIN_REVIEWERS,
       targets: canReview
         ? active
@@ -117,11 +139,43 @@ export async function readScore(projectId: string, user: Identity, now = new Dat
 
 /** GET /api/score/me. 내가 속한 프로젝트 전체의 확정 점수·최고 등급·뱃지. */
 export async function readMyScore(user: Identity, now = new Date()) {
-  const projects = await listProjects(user);
-  const scores = [];
-  for (const p of projects) scores.push(await projectScore(String(p.id), user.id, now));
+  // 이전 기록 가져오기는 로그인한 본인 조회에서만 한다.
+  await listProjects(user);
+  return scoreSummary(user.id, now);
+}
+
+/** 한 사용자의 확정 점수·최고 등급·뱃지·프로젝트 기록. 일괄 계산과 공개 프로필도 쓴다. */
+function endOf(p: { left_at: Date | null; lifecycle: string; completed_at: Date | null; deadline_at: Date | null }) {
+  // 완주 시각이 비어 있는 예전 완주는 마감 시각으로 대신한다.
+  const at = p.left_at ?? (p.lifecycle === 'completed' ? (p.completed_at ?? p.deadline_at) : p.lifecycle === 'expired' ? p.deadline_at : null);
+  return at ? new Date(at) : null;
+}
+export async function scoreSummary(userId: string, now = new Date()) {
+  const projects = await projectRows(userId, now);
+  const scores: Awaited<ReturnType<typeof projectScore>>[] = [];
+  for (const p of projects) scores.push(await projectScore(String(p.id), userId, now));
   const me = summarize(scores);
-  return { ...me, badges: me.badges.map((b) => ({ ...b, earnedAt: iso(b.earnedAt) })) };
+  return {
+    ...me,
+    average: me.projects ? Math.round((me.totalScore / me.projects) * 10) / 10 : null,
+    badges: me.badges.map((b) => ({ ...b, earnedAt: iso(b.earnedAt) })),
+    // 마이페이지 활동: 내 프로젝트별 상태와 내 점수·등급(다른 사람 점수는 없다).
+    history: projects.map((p, i) => ({
+      id: String(p.id),
+      title: p.title,
+      role: p.role,
+      // 참여를 중단한 프로젝트. 화면은 표시하되 개인 완주로 세지 않는다.
+      left: Boolean(p.left_at),
+      lifecycle: p.lifecycle,
+      startedAt: iso(p.started_at ? new Date(p.started_at) : null),
+      deadlineAt: iso(p.deadline_at ? new Date(p.deadline_at) : null),
+      // 프로필 휴식 감점용 종료 시각: 나간 시각, 완주 시각, 마감 시각 순.
+      endedAt: iso(endOf(p)),
+      score: scores[i].score,
+      grade: scores[i].grade,
+      hidden: scores[i].review.hidden,
+    })),
+  };
 }
 
 /** POST /api/score { action: 'review' }. 평가자당 1회, 대상 전원을 한 트랜잭션으로 저장한다. */

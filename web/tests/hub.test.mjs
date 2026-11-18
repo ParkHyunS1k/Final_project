@@ -12,7 +12,7 @@ const db = await setupTestDb();
 const out = join(mkdtempSync(join(tmpdir(), 'hub-test-')), 'api.mjs');
 await build({
   stdin: {
-    contents: `export {GET,POST} from './app/api/hub/route'; export {GET as sprintGET,POST as sprintPOST} from './app/api/sprint/route'; export {GET as careerGET,POST as careerPOST} from './app/api/career/route'; export {POST as projectPOST} from './app/api/projects/route'; export {GET as teamsGET,POST as teamsPOST} from './app/api/teams/route'; export {TEMPLATES,scopedTemplate} from './lib/career/catalog'; export {learningStats,safeLink} from './lib/hub'; export {appDestination} from './lib/app-navigation';`,
+    contents: `export {GET,POST} from './app/api/hub/route'; export {GET as sprintGET,POST as sprintPOST} from './app/api/sprint/route'; export {GET as careerGET,POST as careerPOST} from './app/api/career/route'; export {POST as projectPOST} from './app/api/projects/route'; export {GET as teamsGET,POST as teamsPOST} from './app/api/teams/route'; export {TEMPLATES,scopedTemplate} from './lib/career/catalog'; export {learningStats,safeLink} from './lib/hub'; export {appDestination,homeShowsProject} from './lib/app-navigation';`,
     resolveDir: process.cwd(),
     loader: 'ts',
   },
@@ -155,7 +155,6 @@ test('이력서 없이 생성하고 재시도·동시 제출해도 같은 프로
   assert.equal(a.projectId, b.projectId);
   const s = await state('solo', a.projectId);
   assert.equal(s.sprint.tasks.length, 2);
-  assert.equal(s.policy.minMembers, 1);
   assert.equal(s.policy.completionMode, 'tasks');
   assert.deepEqual(s.deliverables, []);
   assert.equal(s.agreement.completion_criteria, '');
@@ -319,7 +318,7 @@ test('비공개 전환은 팀장만 가능하고 새 관심 요청과 만료 팀
   assert.ok(
     !(await read('someone')).directory.some((p) => p.project_id === id),
   );
-  await db.run('UPDATE hub_projects SET listed=true WHERE project_id=?', id);
+  await db.run('UPDATE project_policy SET listed=true WHERE project_id=?', id);
   await db.run(
     "UPDATE project_policy SET lifecycle='active',deadline_at=now()-interval '1 day' WHERE project_id=?",
     id,
@@ -420,7 +419,7 @@ test('초대 저장 직전 권한 변경은 실제 초대와 관심 요청 갱�
 });
 test('저장 직전 팀장 권한이 철회되면 공개 상태를 바꾸지 못한다', async () => {
   const id = await create('race-owner', { mode: 'team', listed: false });
-  globalThis.__BEFORE_WRITE_SQL = 'UPDATE hub_projects';
+  globalThis.__BEFORE_WRITE_SQL = 'UPDATE project_policy SET listed';
   globalThis.__BEFORE_WRITE = () =>
     db.run("UPDATE project_members SET role='member' WHERE project_id=?", id);
   await json(
@@ -433,7 +432,7 @@ test('저장 직전 팀장 권한이 철회되면 공개 상태를 바꾸지 못
     409,
   );
   assert.equal(
-    (await db.one('SELECT listed FROM hub_projects WHERE project_id=?', id))
+    (await db.one('SELECT listed FROM project_policy WHERE project_id=?', id))
       .listed,
     false,
   );
@@ -455,12 +454,40 @@ test('포트폴리오·공고는 계정별로 저장되며 같은 기록을 수�
       action: 'saveRecord',
       kind: 'portfolio',
       id,
+      revision: 1,
       title: '수정 제목',
       text: '수정 본문',
       url: '',
     }),
   );
   assert.equal((await read('records')).records.length, 1);
+  assert.equal((await read('records')).records[0].revision, 2);
+  // 다른 탭에서 열어둔 옛 버전(1)으로 저장하면 최신 수정을 덮어쓰지 않는다.
+  const stale = await json(
+    await post('records', {
+      action: 'saveRecord',
+      kind: 'portfolio',
+      id,
+      revision: 1,
+      title: '내 구현',
+      text: '옛 화면에서 고친 본문',
+      url: '',
+    }),
+    409,
+  );
+  assert.match(stale.error, /먼저 수정/);
+  // 같은 번호로 '새 자료'를 다시 보내도 덮어쓰지 않는다.
+  await json(
+    await post('records', {
+      action: 'saveRecord',
+      kind: 'portfolio',
+      id,
+      title: '새 자료인 척',
+      text: '',
+      url: '',
+    }),
+    409,
+  );
   assert.equal((await read('records')).records[0].payload.title, '수정 제목');
   assert.deepEqual((await read('records-other')).records, []);
   await json(
@@ -493,13 +520,13 @@ test('같은 날 체크인을 여러 번 하거나 쉬기로 바꿔도 점수가
   );
   let user = await read('checkin');
   assert.equal(user.records.length, 1);
-  assert.equal(user.stats.points, 10);
+  assert.equal(user.stats.days, 1);
   assert.equal(user.stats.streak, 1);
   await json(
     await post('checkin', { action: 'checkin', status: 'rest', skills: [] }),
   );
   user = await read('checkin');
-  assert.equal(user.stats.points, 0);
+  assert.equal(user.stats.days, 0);
   assert.equal(user.stats.streak, 0);
   await json(
     await post('checkin', {
@@ -510,24 +537,38 @@ test('같은 날 체크인을 여러 번 하거나 쉬기로 바꿔도 점수가
     400,
   );
 });
-test('연속 학습은 한국 날짜 경계를 사용하고 유효 경험만 점수 인자로 받는다', () => {
+test('연속 학습은 한국 날짜 경계를 사용하고, 점수·레벨·배지는 만들지 않는다(등급·뱃지는 동료평가만)', () => {
   const records = ['2026-10-06', '2026-10-07', '2026-10-08'].map((day) => ({
     id: 'checkin:' + day,
     kind: 'checkin',
     payload: { status: 'studied' },
   }));
-  const s = api.learningStats(records, 1, new Date('2026-10-08T15:00:01Z'));
+  const s = api.learningStats(records, new Date('2026-10-08T15:00:01Z'));
   assert.equal(s.streak, 3);
-  assert.equal(s.points, 60);
-  assert.ok(s.badges.includes('3일 연속 학습'));
+  assert.equal(s.days, 3);
+  assert.deepEqual(Object.keys(s).sort(), ['dates', 'days', 'streak', 'today']);
+  // 학습한 날 칸 그림용: 공부한 날짜만, 오래된 순.
+  assert.deepEqual(
+    api.learningStats([...records].reverse(), new Date('2026-10-08T15:00:01Z')).dates,
+    ['2026-10-06', '2026-10-07', '2026-10-08'],
+  );
   assert.equal(
-    api.learningStats(records, 0, new Date('2026-10-09T15:00:01Z')).streak,
+    api.learningStats(records, new Date('2026-10-09T15:00:01Z')).streak,
     0,
   );
 });
 
 test('old team and create links open the unified app destinations', () => {
   assert.equal(api.appDestination({ teams: '1' }, 'work'), '/app?tab=teams');
+});
+test('홈은 준비·진행 중인 프로젝트가 있을 때만 프로젝트 화면이고, 아니면 원래 홈이다', () => {
+  const p = (lifecycle) => ({ lifecycle });
+  assert.equal(api.homeShowsProject([p('active')]), true);
+  assert.equal(api.homeShowsProject([p('completed'), p('draft')]), true);
+  assert.equal(api.homeShowsProject([p('completed'), p('expired')]), false);
+  assert.equal(api.homeShowsProject([]), false);
+  // 로그인 전이거나 아직 불러오지 못했으면 프로젝트 화면이 아니다.
+  assert.equal(api.homeShowsProject(undefined), false);
   assert.equal(api.appDestination({ create: '1' }, 'work'), '/app?tab=create');
   assert.equal(
     api.appDestination({ teams: '1', invite: 'token' }, 'work'),
@@ -543,6 +584,11 @@ test('template teams share listing state and support main participation approval
     await api.teamsGET(req(applicant, null, '/api/teams')),
   );
   assert.ok(listed.teams.some((t) => t.projectId === id));
+  // 팀 찾기 카드의 기술 태그: 템플릿 업무의 기술(중복 없이 최대 4개).
+  const skills = listed.teams.find((t) => t.projectId === id).skills;
+  assert.ok(skills.length > 0 && skills.length <= 4);
+  assert.equal(new Set(skills).size, skills.length);
+  assert.ok(skills.every((k) => typeof k === 'string'));
   const application = await json(
     await api.teamsPOST(
       req(
@@ -599,7 +645,7 @@ test('template teams share listing state and support main participation approval
     false,
   );
   assert.equal(
-    (await db.one('SELECT listed FROM hub_projects WHERE project_id=?', id))
+    (await db.one('SELECT listed FROM project_policy WHERE project_id=?', id))
       .listed,
     false,
   );
@@ -645,6 +691,17 @@ test('main projects appear on the unified home and can still start solo', async 
   assert.ok(card);
   assert.equal(card.template, null);
   assert.equal(card.goal, 'Build a working service');
+  // 직접 만든 팀은 기술 태그가 없다.
+  const found = (await json(await api.teamsGET(req('merged-main-visitor', null, '/api/teams')))).teams.find((t) => t.projectId === id);
+  assert.deepEqual(found.skills, []);
+  // 홈 카드의 신청 가능 여부는 팀 찾기와 같은 참여 창(준비 중, 시작 후 24시간)을 따른다.
+  assert.equal(card.join_open, true);
   const started = await sprint(owner, id, 'start');
   assert.equal(started.lifecycle, 'active');
+  const live = (await read('merged-main-visitor')).directory.find((t) => t.project_id === id);
+  assert.equal(live.join_open, true);
+  await db.run("UPDATE project_policy SET started_at=now()-interval '25 hours' WHERE project_id=?", id);
+  const late = (await read('merged-main-visitor')).directory.find((t) => t.project_id === id);
+  assert.ok(late, '홈은 진행 중 팀을 마감까지 보여준다');
+  assert.equal(late.join_open, false);
 });

@@ -383,7 +383,6 @@ test('프로젝트 생성 재시도는 같은 프로젝트를 반환하고 최�
   assert.equal(start.status, 200);
   const started = await json(start);
   assert.equal(started.lifecycle, 'active');
-  assert.equal(started.policy.minMembers, 1);
 });
 test('개인 원문은 팀에 노출하지 않으며 타인의 프로필 공유를 거절한다', async () => {
   const t = await team('sharing');
@@ -485,12 +484,25 @@ test('역할안을 검토·반영하면 실제 업무와 의존관계가 생기�
       .n,
     after.tasks.length,
   );
+  await db.run(
+    "UPDATE sprint_tasks SET touched_at='2026-01-01T00:00:00Z' WHERE owner=?",
+    t.id,
+  );
   const next = await proposal(t);
   await json(await post(t.owner, applyBody(t, next, 1)));
   assert.equal(
     (await db.one('SELECT count(*) AS n FROM sprint_tasks WHERE owner=?', t.id))
       .n,
     after.tasks.length,
+  );
+  // 담당자가 바뀐 업무는 마지막 변경 시각도 갱신된다(멈춘 업무 표시, 2026-11-14).
+  assert.ok(
+    (
+      await db.one(
+        "SELECT count(*) AS n FROM sprint_tasks WHERE owner=? AND touched_at > '2026-06-01'",
+        t.id,
+      )
+    ).n > 0,
   );
 });
 test('공유 철회는 오래된 추천 근거를 숨기고 그 역할안의 반영을 차단한다', async () => {
@@ -561,6 +573,37 @@ test('개인 기여를 가져오면 목표 비교가 갱신되고 재개·담당
   );
   state = await json(await get(t.owner, t.id));
   const completed = state.myCompletedTasks.find((v) => v.id === task.id);
+  // 마이페이지: 프로젝트를 고르지 않아도 가져올 수 있는 내 업무가 보인다. 담당이 아니면 안 보인다.
+  const waiting = (await json(await get(t.owner))).pending.find(
+    (p) => p.projectId === t.id && p.taskId === task.id,
+  );
+  assert.equal(waiting.taskVersion, completed.changeVersion);
+  assert.equal(waiting.title, task.title);
+  assert.ok(waiting.projectTitle);
+  assert.deepEqual(waiting.skills, ['docker']);
+  assert.match(waiting.evidence, /Dockerfile/);
+  assert.equal(
+    (await json(await get(t.mate))).pending.some((p) => p.taskId === task.id && p.projectId === t.id),
+    false,
+  );
+  // 근거 글자 수는 저장 검사(recordExperience)와 같은 기준으로 센다: 이모지 3개(UTF-16 6자)도 보인다.
+  const emojiTask = state.tasks.find((v) => v.id !== task.id && v.person === state.me.person && v.skills.length);
+  if (emojiTask) {
+    await json(
+      await send(api.sprintPOST, t.owner, {
+        action: 'task',
+        projectId: t.id,
+        revision: (await json(await get(t.owner, t.id))).revision,
+        taskId: emojiTask.id,
+        done: true,
+        evidence: '😀😀😀',
+      }),
+    );
+    assert.ok(
+      (await json(await get(t.owner))).pending.some((p) => p.projectId === t.id && p.taskId === emojiTask.id),
+      '저장할 수 있는 업무는 목록에도 나온다',
+    );
+  } else assert.fail('이모지 근거를 확인할 내 다른 업무가 필요하다');
   const record = {
     action: 'recordExperience',
     projectId: t.id,
@@ -579,6 +622,12 @@ test('개인 기여를 가져오면 목표 비교가 갱신되고 재개·담당
   await json(await post(t.owner, record));
   const personal = await json(await get(t.owner));
   assert.equal(personal.experiences.length, 1);
+  assert.equal(personal.experiences[0].project_title, waiting.projectTitle);
+  assert.equal(
+    personal.pending.some((p) => p.projectId === t.id && p.taskId === task.id),
+    false,
+    '이미 가져온 업무는 다시 나오지 않는다',
+  );
   assert.equal(
     personal.beforeGaps.find((g) => g.skillId === 'docker').status,
     'no_experience',

@@ -32,6 +32,7 @@ import {
   proposeRoles,
   applyRoles,
   recordExperience,
+  pendingExperiences,
 } from '@/lib/career/store';
 
 export const dynamic = 'force-dynamic';
@@ -82,14 +83,16 @@ export async function GET(request: Request) {
       const { _team, ...state } = await teamState(projectId, user);
       return reply(state);
     }
-    const [profile, experiences] = await Promise.all([
+    const [profile, experiences, pending] = await Promise.all([
       readProfile(user.id),
       readExperiences(user.id),
+      pendingExperiences(user.id),
     ]);
     const extra = experienceSkills(experiences);
     return reply({
       profile,
       experiences,
+      pending,
       skills: SKILLS.map(({ id, name }) => ({ id, name })),
       roles: ROLES,
       targets: TARGETS,

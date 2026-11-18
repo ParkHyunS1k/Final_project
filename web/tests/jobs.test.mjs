@@ -98,3 +98,19 @@ test('공고 검색은 너무 짧은 검색어를 Jooble에 보내지 않는다'
   assert.equal(response.status, 400);
   assert.match((await response.json()).error, /두 글자/);
 });
+
+test('서버에 공고 검색 키가 없으면 설정 정보 대신 준비 중이라고 답한다', async () => {
+  const key = process.env.JOOBLE_API_KEY;
+  delete process.env.JOOBLE_API_KEY;
+  try {
+    const response = await api.GET(
+      request('user-a', '/api/jobs?keywords=백엔드&location=서울'),
+    );
+    assert.equal(response.status, 503);
+    const { error } = await response.json();
+    assert.match(error, /준비 중/);
+    assert.doesNotMatch(error, /env|API 키/);
+  } finally {
+    process.env.JOOBLE_API_KEY = key;
+  }
+});

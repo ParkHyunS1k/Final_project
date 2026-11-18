@@ -10,6 +10,7 @@ import {
   primaryKey,
   index,
   uniqueIndex,
+  real,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -158,6 +159,8 @@ export const hubRecords = pgTable(
     id: text('id').notNull(),
     kind: text('kind').notNull(),
     payload: jsonb('payload').notNull(),
+    // 포트폴리오·공고 수정 충돌 감지용. 옛 화면의 저장은 409로 거절한다.
+    revision: integer('revision').notNull().default(1),
     createdAt: timestamp('created_at', tz).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.id] })],
@@ -169,7 +172,6 @@ export const hubProjects = pgTable('hub_projects', {
   template: jsonb('template').notNull(),
   scopeLevel: integer('scope_level').notNull(),
   mode: text('mode').notNull(),
-  listed: boolean('listed').notNull().default(false),
 }).enableRLS();
 export const hubInterests = pgTable(
   'hub_interests',
@@ -215,6 +217,8 @@ export const tasks = pgTable(
     deadlineVersion: integer('deadline_version').notNull().default(0),
     // 업무 단위 변경 버전. 생성 이후 수정 여부를 업무별로 판단한다.
     changeVersion: integer('change_version').notNull().default(0),
+    // 마지막으로 업무를 바꾼 시각(체크인·상태·상세 등, change_version과 함께 갱신). 멈춘 업무 표시용(2026-11-14).
+    touchedAt: timestamp('touched_at', tz).notNull().defaultNow(),
     optional: boolean('optional').notNull().default(false),
     deferred: boolean('deferred').notNull().default(false),
     done: boolean('done').notNull().default(false),
@@ -256,6 +260,13 @@ export const checkins = pgTable(
     note: text('note').notNull(),
     remaining: doublePrecision('remaining').notNull(),
     createdAt: timestamp('created_at', tz).notNull(),
+    // 오늘의 랩 기록(2026-11-16): 한 번에 보고한 여러 업무 줄을 묶는 id와 업무별 막힌 점. 예전 체크인은 둘 다 null.
+    reportId: text('report_id'),
+    blocker: text('blocker'),
+    // 보고 당시 담당자·작성자·완료 여부(0014). 담당자가 바뀌거나 업무가 나중에 완료돼도 그날 기록은 그대로 보인다.
+    person: integer('person'),
+    authorPerson: integer('author_person'),
+    done: boolean('done').notNull().default(false),
   },
   (t) => [index('idx_checkins_owner_createdAt').on(t.owner, t.createdAt)],
 ).enableRLS();
@@ -340,7 +351,6 @@ export const projectPolicy = pgTable('project_policy', {
   goalVersion: integer('goal_version').notNull().default(1),
   durationDays: integer('duration_days').notNull(),
   dailyHours: doublePrecision('daily_hours').notNull().default(8),
-  minMembers: integer('min_members').notNull().default(1),
   completionMode: text('completion_mode').notNull().default('deliverables'),
   startedAt: timestamp('started_at', tz),
   deadlineAt: timestamp('deadline_at', tz),
@@ -593,9 +603,10 @@ export const peerReviews = pgTable(
       .references(() => sprints.owner),
     reviewerId: text('reviewer_id').notNull(),
     revieweeId: text('reviewee_id').notNull(),
-    contribution: integer('contribution').notNull(),
-    communication: integer('communication').notNull(),
-    commitment: integer('commitment').notNull(),
+    // 0.5점 단위(별 반 개, 2026-11-06). real은 0.5 배수를 정확히 담는다.
+    contribution: real('contribution').notNull(),
+    communication: real('communication').notNull(),
+    commitment: real('commitment').notNull(),
     submissionId: text('submission_id').notNull(),
   },
   (t) => [
@@ -665,4 +676,115 @@ export const reviewQuota = pgTable(
     n: integer('n').notNull(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.day] })],
+).enableRLS();
+
+// 마이페이지에서 연결한 GitHub 계정(2026-11-08). 기준은 Supabase 신원이고 서버만 쓴다.
+// github_id(숫자 id)가 기준이며 아이디(login)는 바뀔 수 있다. 한 GitHub는 한 사용자에게만.
+export const githubAccounts = pgTable('github_accounts', {
+  userId: text('user_id').primaryKey(),
+  githubId: text('github_id').notNull().unique(),
+  login: text('login').notNull(),
+  linkedAt: timestamp('linked_at', tz).notNull(),
+  updatedAt: timestamp('updated_at', tz).notNull(),
+}).enableRLS();
+
+// GitHub 연결 기록. action: link | unlink | transfer_out(다른 사용자에게 넘어감).
+export const githubLinkEvents = pgTable(
+  'github_link_events',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull(),
+    githubId: text('github_id').notNull(),
+    login: text('login').notNull(),
+    action: text('action').notNull(),
+    createdAt: timestamp('created_at', tz).notNull(),
+  },
+  (t) => [index('idx_github_link_events_user').on(t.userId, t.createdAt)],
+).enableRLS();
+
+// 프로젝트 GitHub 저장소(2026-11-09). 이슈 가져오기와 학습 확인 기본 저장소. 팀장만 바꾼다.
+// 업무 revision과 분리한다: 바꿔도 승인 대기 중인 AI 변경안이 무효가 되지 않게 자체 version을 둔다.
+export const projectRepos = pgTable('project_repos', {
+  projectId: text('project_id').primaryKey(),
+  repoOwner: text('repo_owner').notNull(),
+  repoName: text('repo_name').notNull(),
+  version: integer('version').notNull(),
+  updatedBy: text('updated_by').notNull(),
+  updatedAt: timestamp('updated_at', tz).notNull(),
+}).enableRLS();
+
+// 저장소 등록·변경 기록. action: set.
+export const projectRepoEvents = pgTable(
+  'project_repo_events',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id').notNull(),
+    userId: text('user_id').notNull(),
+    repoOwner: text('repo_owner').notNull(),
+    repoName: text('repo_name').notNull(),
+    action: text('action').notNull(),
+    createdAt: timestamp('created_at', tz).notNull(),
+  },
+  (t) => [index('idx_project_repo_events').on(t.projectId, t.createdAt)],
+).enableRLS();
+
+// 이슈로 만든 원문 안의 이슈별 위치. 팀원 아닌 작성자 경고와 다시 가져오기 중복 경고에 쓴다.
+// repo(owner/name)는 저장소를 바꾼 뒤 같은 번호를 다른 이슈로 오인하지 않게 둔다.
+export const sourceIssueSpans = pgTable(
+  'source_issue_spans',
+  {
+    sourceId: text('source_id').notNull(),
+    projectId: text('project_id').notNull(),
+    repo: text('repo').notNull(),
+    issueNumber: integer('issue_number').notNull(),
+    start: integer('start').notNull(),
+    end: integer('end').notNull(),
+    authorLogin: text('author_login').notNull(),
+    authorIsMember: boolean('author_is_member').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.sourceId, t.issueNumber] }),
+    index('idx_source_issue_spans_repo').on(t.projectId, t.repo, t.issueNumber),
+  ],
+).enableRLS();
+
+// 프로필 점수(2026-11-17). 매일 일괄 계산한 저장값만 화면·카드·공개 프로필이 쓴다.
+// 상위 %는 같은 formula_version끼리만 비교한다. score null은 아직 공개된 평가가 없음.
+export const profileScores = pgTable(
+  'profile_scores',
+  {
+    userId: text('user_id').primaryKey(),
+    score: doublePrecision('score'),
+    grade: text('grade').notNull(),
+    formulaVersion: text('formula_version').notNull(),
+    computedAt: timestamp('computed_at', tz).notNull(),
+  },
+  (t) => [index('idx_profile_scores_rank').on(t.formulaVersion, t.score)],
+).enableRLS();
+
+// 공개 프로필 설정. 본인이 enabled를 켰을 때만 /u/<handle>이 열린다. 숨김·근거 목록은 본인 id만 담는다.
+export const publicProfiles = pgTable('public_profiles', {
+  userId: text('user_id').primaryKey(),
+  handle: text('handle').notNull().unique(),
+  displayName: text('display_name').notNull(),
+  enabled: boolean('enabled').default(false).notNull(),
+  showGithub: boolean('show_github').default(false).notNull(),
+  hiddenProjects: jsonb('hidden_projects').default(sql`'[]'::jsonb`).notNull(),
+  hiddenExperiences: jsonb('hidden_experiences').default(sql`'[]'::jsonb`).notNull(),
+  shownEvidence: jsonb('shown_evidence').default(sql`'[]'::jsonb`).notNull(),
+  version: integer('version').default(1).notNull(),
+  updatedAt: timestamp('updated_at', tz).notNull(),
+}).enableRLS();
+
+// 공개 프로필 변경 기록. action: create | update | enable | disable | handle.
+export const publicProfileEvents = pgTable(
+  'public_profile_events',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull(),
+    action: text('action').notNull(),
+    detail: jsonb('detail').notNull(),
+    createdAt: timestamp('created_at', tz).defaultNow().notNull(),
+  },
+  (t) => [index('idx_public_profile_events_user').on(t.userId, t.createdAt)],
 ).enableRLS();

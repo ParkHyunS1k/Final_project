@@ -51,7 +51,7 @@ Abstractive는 원문의 의미를 재구성하는 요약 방식이다. 외부 A
 node -e 'const f=require("node:fs");f.mkdirSync(".data",{recursive:true});if(!f.existsSync(".data/lora-token"))f.writeFileSync(".data/lora-token",require("node:crypto").randomBytes(48).toString("hex"),{mode:384})'
 ```
 
-`web/.env.local`에는 `.env.example`의 로컬 연결 항목도 설정한다. 아래 명령은 각각 해당 폴더의 별도 터미널에서 실행한다.
+`web/.env.local`에 `.env.example`에서 주석으로 표시한 로컬 연결 설정 네 줄을 복사해 주석 기호를 지운다. 아래 명령은 각각 해당 폴더의 별도 터미널에서 실행한다.
 
 ```sh
 # local-llm 폴더
@@ -77,7 +77,7 @@ node scripts/dev-as.mjs 3287 website-demo 시연계정 3286
 
 ## 점수와 등급 제안
 
-현재 구현은 기존 활동 포인트와 레벨을 표시한다. 종합 등급과 상위 퍼센트는 아직 계산하지 않는다. 기존 동료평가 공개 조건도 바꾸지 않았다.
+마이페이지 상단의 점수, 등급, 상위 퍼센트는 프로젝트의 현재 프로필 산정식을 따른다. 아래 100점 구성은 별도의 설계 제안이다.
 
 제안하는 100점 구성은 결과물 완성도 40점, 본인 기여 25점, 협업 20점, 지속적인 성장 15점이다. 완료 프로젝트 개수는 결과물 항목 안에서 상한과 체감 가산을 적용한다. 단순히 프로젝트를 많이 만들거나 체크인 버튼을 누르는 것만으로 점수가 올라가지 않도록 한다.
 

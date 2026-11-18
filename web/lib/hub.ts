@@ -22,7 +22,8 @@ import {
 } from './career/profile';
 import { readProfile, readExperiences, experienceSkills } from './career/store';
 import { dateInSeoul } from './sprint';
-import { setListed } from './teams';
+import { setListed, windowSql } from './teams';
+import { assertNotRestricted } from './sanction';
 
 export type HubRecord = {
   id: string;
@@ -34,6 +35,7 @@ export type HubRecord = {
     status?: string;
     skills?: string[];
   };
+  revision: number;
   created_at: Date;
 };
 export function safeLink(value: unknown) {
@@ -49,11 +51,8 @@ export function safeLink(value: unknown) {
     throw new CareerError('인증 정보가 없는 HTTPS 주소만 저장할 수 있습니다.');
   return url.href;
 }
-export function learningStats(
-  records: HubRecord[],
-  experienceCount: number,
-  now = new Date(),
-) {
+// 학습 기록: '공부함' 체크인 날짜 수와 연속 일수만 센다. 등급·뱃지는 동료평가 하나로 통일해 여기서는 점수·레벨·배지를 만들지 않는다(2026-11-07).
+export function learningStats(records: HubRecord[], now = new Date()) {
   const days = new Set(
     records
       .filter((r) => r.kind === 'checkin' && r.payload.status === 'studied')
@@ -67,18 +66,10 @@ export function learningStats(
     streak++;
     cursor.setUTCDate(cursor.getUTCDate() - 1);
   }
-  const points = days.size * 10 + experienceCount * 30;
   return {
     streak,
     days: days.size,
-    points,
-    level: 1 + Math.floor(points / 100),
-    badges: [
-      days.size >= 1 ? '첫 발걸음' : '',
-      streak >= 3 ? '3일 연속 학습' : '',
-      days.size >= 7 ? '일주일의 기록' : '',
-      experienceCount >= 1 ? '경험 수집가' : '',
-    ].filter(Boolean),
+    dates: [...days].sort(),
     today:
       records.find((r) => r.id === 'checkin:' + dateInSeoul(now))?.payload
         .status ?? '',
@@ -93,7 +84,7 @@ export async function readHub(user: Identity) {
       listProjects(user),
       db
         .prepare(
-          'SELECT id,kind,payload,created_at FROM hub_records WHERE user_id=? ORDER BY created_at DESC',
+          'SELECT id,kind,payload,revision,created_at FROM hub_records WHERE user_id=? ORDER BY created_at DESC',
         )
         .bind(user.id)
         .all<HubRecord>(),
@@ -101,11 +92,11 @@ export async function readHub(user: Identity) {
         .prepare(`SELECT p.project_id,s.title,d.goal,h.template,h.scope_level,p.lifecycle,p.started_at,p.deadline_at,
       (SELECT count(*)::int FROM project_members m WHERE m.project_id=p.project_id AND m.left_at IS NULL) AS members,
       EXISTS(SELECT 1 FROM project_members m WHERE m.project_id=p.project_id AND m.user_id=? AND m.left_at IS NULL) AS joined,
-      EXISTS(SELECT 1 FROM hub_interests i WHERE i.project_id=p.project_id AND i.user_id=?) AS interested
+      ${windowSql('p')} AS join_open
       FROM project_policy p JOIN sprints s ON s.owner=p.project_id JOIN project_details d ON d.project_id=p.project_id LEFT JOIN hub_projects h ON h.project_id=p.project_id
       WHERE p.listed=true AND EXISTS(SELECT 1 FROM project_members owner WHERE owner.project_id=p.project_id AND owner.role='owner' AND owner.left_at IS NULL) AND p.lifecycle IN ('draft','active') AND (p.deadline_at IS NULL OR p.deadline_at>now())
       ORDER BY CASE WHEN p.lifecycle='active' THEN 0 ELSE 1 END,s.updated_at DESC LIMIT 40`)
-        .bind(user.id, user.id)
+        .bind(user.id)
         .all<{
           project_id: string;
           title: string;
@@ -117,7 +108,8 @@ export async function readHub(user: Identity) {
           deadline_at: Date | null;
           members: number;
           joined: boolean;
-          interested: boolean;
+          /** 지금 참여 신청을 받는가(팀 찾기와 같은 참여 창). 홈은 진행 중 팀을 마감까지 보여준다. */
+          join_open: boolean;
         }>(),
       db
         .prepare(
@@ -158,10 +150,7 @@ export async function readHub(user: Identity) {
     profile,
     recommendations: profile ? recommendations(profile, extra) : [],
     gaps: profile ? gapsFor(profile, extra) : [],
-    stats: learningStats(
-      records.results,
-      experiences.filter((e) => e.valid).length,
-    ),
+    stats: learningStats(records.results),
   };
 }
 export async function createTemplateProject(
@@ -215,15 +204,9 @@ export async function createTemplateProject(
           ),
         db
           .prepare(
-            'INSERT INTO hub_projects(project_id,template,scope_level,mode,listed) VALUES(?,?,?,?,?)',
+            'INSERT INTO hub_projects(project_id,template,scope_level,mode) VALUES(?,?,?,?)',
           )
-          .bind(
-            id,
-            template,
-            b.scopeLevel,
-            b.mode,
-            b.mode === 'team' && b.listed,
-          ),
+          .bind(id, template, b.scopeLevel, b.mode),
         db
           .prepare('UPDATE project_policy SET listed=? WHERE project_id=?')
           .bind(b.mode === 'team' && b.listed, id),
@@ -306,17 +289,39 @@ export async function hubAction(
         b.kind === 'job' ? 20000 : 20000,
       ),
     };
+    // 수정은 화면이 읽은 revision이 최신일 때만 반영한다. 새 자료는 같은 번호가 있으면 덮어쓰지 않는다.
+    if (b.revision !== undefined) {
+      const result = await db
+        .prepare(
+          'UPDATE hub_records SET payload=?, revision=revision+1 WHERE user_id=? AND id=? AND kind=? AND revision=?',
+        )
+        .bind(payload, user.id, id, b.kind, Number(b.revision))
+        .run();
+      if (!result.meta.changes)
+        throw new CareerError(
+          '다른 화면에서 먼저 수정된 자료입니다. 새로고침한 뒤 다시 고쳐주세요.',
+          409,
+        );
+      return { saved: true };
+    }
     const result = await db
       .prepare(
-        `INSERT INTO hub_records(user_id,id,kind,payload) SELECT ?,?,?,? WHERE (SELECT count(*) FROM hub_records WHERE user_id=? AND kind=?)<100 OR EXISTS(SELECT 1 FROM hub_records WHERE user_id=? AND id=?) ON CONFLICT(user_id,id) DO UPDATE SET payload=excluded.payload WHERE hub_records.kind=excluded.kind`,
+        `INSERT INTO hub_records(user_id,id,kind,payload) SELECT ?,?,?,? WHERE (SELECT count(*) FROM hub_records WHERE user_id=? AND kind=?)<100 ON CONFLICT(user_id,id) DO NOTHING`,
       )
-      .bind(user.id, id, b.kind, payload, user.id, b.kind, user.id, id)
+      .bind(user.id, id, b.kind, payload, user.id, b.kind)
       .run();
-    if (!result.meta.changes)
+    if (!result.meta.changes) {
+      const exists = await db
+        .prepare('SELECT 1 FROM hub_records WHERE user_id=? AND id=?')
+        .bind(user.id, id)
+        .first();
       throw new CareerError(
-        '기록 종류별 최대 100개까지 저장할 수 있습니다.',
+        exists
+          ? '이미 저장된 자료입니다. 새로고침한 뒤 다시 고쳐주세요.'
+          : '기록 종류별 최대 100개까지 저장할 수 있습니다.',
         409,
       );
+    }
     return { saved: true };
   }
   if (b.action === 'interest') {
@@ -326,6 +331,8 @@ export async function hubAction(
       );
     if (!user.email)
       throw new CareerError('팀 초대를 받을 로그인 이메일이 필요합니다.');
+    // 관심 표시는 참여 신청과 같다. 동료평가 미제출 금지 중에는 막는다.
+    await assertNotRestricted(user.id, new Date(), '참여 신청할');
     const result = await db
       .prepare(
         `INSERT INTO hub_interests(project_id,user_id,display_name,email) SELECT h.project_id,?,?,? FROM hub_projects h JOIN project_policy p ON p.project_id=h.project_id WHERE h.project_id=? AND p.listed=true AND h.mode='team' AND p.lifecycle IN ('draft','active') AND (p.deadline_at IS NULL OR p.deadline_at>now()) AND (SELECT count(*) FROM project_members m WHERE m.project_id=h.project_id AND m.left_at IS NULL)<4 AND NOT EXISTS(SELECT 1 FROM project_members m WHERE m.project_id=h.project_id AND m.user_id=? AND m.left_at IS NULL) ON CONFLICT(project_id,user_id) DO UPDATE SET display_name=excluded.display_name,email=excluded.email`,

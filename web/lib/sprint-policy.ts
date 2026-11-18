@@ -18,7 +18,6 @@ export type Policy = {
   goalVersion: number;
   durationDays: number;
   dailyHours: number;
-  minMembers?: number;
   completionMode?: 'deliverables' | 'tasks';
   startedAt: Date | null;
   deadlineAt: Date | null;
@@ -50,7 +49,6 @@ export function policyRow(row: Record<string, unknown> | null | undefined) {
     goalVersion: Number(row.goal_version),
     durationDays: Number(row.duration_days),
     dailyHours: Number(row.daily_hours),
-    minMembers: Number(row.min_members ?? MIN_MEMBERS),
     completionMode: row.completion_mode === 'tasks' ? 'tasks' : 'deliverables',
     startedAt: (row.started_at as Date | null) ?? null,
     deadlineAt: (row.deadline_at as Date | null) ?? null,
@@ -121,6 +119,8 @@ export const RULES: Record<string, Rule> = {
   editTask: { scope: 'owner', states: ['draft', 'active'] },
   taskDetails: { scope: 'assignee', states: ['draft', 'active'] },
   checkin: { scope: 'assignee', states: ['draft', 'active'] },
+  // 오늘의 랩 기록: 여러 업무를 한 번에. 업무마다 담당자(또는 팀장)인지는 route에서 본다.
+  report: { scope: 'member', states: ['draft', 'active'] },
   task: { scope: 'assignee', states: ['draft', 'active'] },
   // 결과물
   deliverableEvidence: { scope: 'member', states: ['draft', 'active'] },
@@ -131,6 +131,9 @@ export const RULES: Record<string, Rule> = {
   createProposal: { scope: 'member', states: ['draft', 'active'] },
   applyChanges: { scope: 'member', states: ['draft', 'active'] },
   revertChanges: { scope: 'member', states: ['draft', 'active'] },
+  // GitHub 이슈 가져오기(2026-11-09): 저장소 등록·변경과 목록·가져오기 모두 팀장만
+  setRepo: { scope: 'owner', states: ['draft', 'active'] },
+  importIssues: { scope: 'owner', states: ['draft', 'active'] },
 };
 
 // 목표·최종 기한은 시작 뒤 어떤 경로로도 바꿀 수 없다. 되돌리기·AI 승인도 같다.
@@ -215,14 +218,13 @@ export function startReadiness(
   }[],
   goalVersion: number,
   deliverables: number,
-  options?: Pick<Policy, 'minMembers' | 'completionMode'>,
+  options?: Pick<Policy, 'completionMode'>,
 ): StartCheck {
   const active = members.filter((m) => !m.leftAt);
   const agreed = active.filter((m) => m.agreedGoalVersion === goalVersion);
   const missing: string[] = [];
-  const minimum = options?.minMembers ?? MIN_MEMBERS;
-  if (active.length < minimum)
-    missing.push(`가입한 팀원이 ${minimum}명 이상이어야 합니다.`);
+  if (active.length < MIN_MEMBERS)
+    missing.push(`참여 중인 멤버가 ${MIN_MEMBERS}명 이상이어야 합니다.`);
   if (agreed.length !== active.length)
     missing.push(
       `최신 목표 미동의: ${active

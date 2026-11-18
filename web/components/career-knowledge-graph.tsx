@@ -204,7 +204,6 @@ export function CareerKnowledgeGraph({ graph }: { graph: KnowledgeGraph }) {
     <section className="kg-card">
       <div className="studio-heading">
         <div>
-          <p className="studio-kicker">MY KNOWLEDGE MAP</p>
           <h2>경험이 연결되는 지도</h2>
           <p>노드를 끌어 배치하고, 눌러서 연결된 경험을 읽어보세요.</p>
         </div>

@@ -14,6 +14,7 @@ export default async function AppPage({
       key={String(params.tab) + String(params.project)}
       initialTab={typeof params.tab === 'string' ? params.tab : 'home'}
       projectId={typeof params.project === 'string' ? params.project : ''}
+      initialShare={params.share === '1'}
     />
   );
 }

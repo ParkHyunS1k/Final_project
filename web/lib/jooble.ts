@@ -81,7 +81,8 @@ export async function searchJooble(input: {
   const apiKey = process.env.JOOBLE_API_KEY?.trim();
   if (!apiKey)
     throw new JoobleError(
-      'Jooble API 키가 서버에 설정되지 않았습니다. web/.env.local을 확인해주세요.',
+      // 키가 없으면 다른 AI 기능처럼 '준비 중'. 설정 위치는 사용자에게 보이지 않는다(web/.env.example).
+      '공고 찾기는 준비 중이에요.',
       503,
     );
 

@@ -25,14 +25,15 @@ import {
   member,
   type Identity,
 } from './projects';
+import { assertNotRestricted, reviewDuties } from './sanction';
 
 /** 한 사용자가 동시에 기다릴 수 있는 신청 수. 여러 팀에 한꺼번에 뿌리지 않게 묶는다. */
 export const MAX_PENDING_REQUESTS = 5;
 /** 한 팀에 쌓일 수 있는 대기 신청 수. 팀장 화면의 신청 목록과 조회 비용이 끝없이 늘지 않게 묶는다. */
 export const MAX_PROJECT_PENDING = 20;
 
-// 참여 창을 DB 시각으로 다시 본다(joinWindowOpen과 같은 규칙). 별칭만 바꿔 넣는다.
-function windowSql(p: string) {
+// 참여 창을 DB 시각으로 다시 본다(joinWindowOpen과 같은 규칙). 별칭만 바꿔 넣는다. 홈 카드도 같은 규칙을 쓴다.
+export function windowSql(p: string) {
   return (
     `(${p}.lifecycle='draft' OR (${p}.lifecycle='active' AND ${p}.started_at > now() - interval '${JOIN_WINDOW_HOURS} hours'` +
     ` AND (${p}.deadline_at IS NULL OR ${p}.deadline_at > now())))`
@@ -62,7 +63,14 @@ type TeamRow = {
   has_owner: boolean;
   project_pending: number;
   listed: boolean;
+  template: { tasks?: { skills?: unknown }[] } | null;
 } & Record<string, unknown>;
+
+/** 템플릿 팀의 기술 태그(업무 기술, 중복 없이 4개까지). 직접 만든 팀은 없다. */
+function skillsOf(template: TeamRow['template']) {
+  const all = (template?.tasks ?? []).flatMap((t) => (Array.isArray(t.skills) ? t.skills : []));
+  return [...new Set(all.filter((k): k is string => typeof k === 'string'))].slice(0, 4);
+}
 
 function teamOf(r: TeamRow, now: Date) {
   const policy = policyRow({ ...r, project_id: r.id })!;
@@ -74,6 +82,7 @@ function teamOf(r: TeamRow, now: Date) {
     goal: r.goal,
     scope: r.scope,
     completionCriteria: r.completion_criteria,
+    skills: skillsOf(r.template),
     lifecycle: policy.lifecycle as 'draft' | 'active',
     goalVersion: policy.goalVersion,
     members,
@@ -93,9 +102,9 @@ function teamOf(r: TeamRow, now: Date) {
   };
 }
 const TEAM_SELECT =
-  `SELECT s.owner AS id,s.title,a.goal,a.scope,a.completion_criteria,p.lifecycle,p.goal_version,p.duration_days,p.daily_hours,p.started_at,p.deadline_at,p.completed_at,p.listed,${MEMBER_COUNT} AS members,${ACTIVE_OWNER} AS has_owner,${PROJECT_PENDING}::int AS project_pending,` +
+  `SELECT s.owner AS id,s.title,a.goal,a.scope,a.completion_criteria,p.lifecycle,p.goal_version,p.duration_days,p.daily_hours,p.started_at,p.deadline_at,p.completed_at,p.listed,h.template,${MEMBER_COUNT} AS members,${ACTIVE_OWNER} AS has_owner,${PROJECT_PENDING}::int AS project_pending,` +
   "EXISTS(SELECT 1 FROM project_join_requests r WHERE r.project_id=s.owner AND r.user_id=? AND r.status='pending') AS requested " +
-  'FROM sprints s JOIN project_policy p ON p.project_id=s.owner JOIN project_agreement a ON a.project_id=s.owner ';
+  'FROM sprints s JOIN project_policy p ON p.project_id=s.owner JOIN project_agreement a ON a.project_id=s.owner LEFT JOIN hub_projects h ON h.project_id=s.owner ';
 
 /** 공개 중이고 참여 창이 열린 팀. 내가 속한 팀은 뺀다. 내 최근 신청도 함께 돌려준다. */
 export async function listTeams(user: Identity) {
@@ -140,6 +149,7 @@ export async function requestJoin(user: Identity, b: Record<string, unknown>) {
   // 화면에서 실제로 확인한 목표 버전만 받는다. 현재 버전으로 대신 채우지 않는다.
   if (!Number.isInteger(b.goalVersion))
     throw new Error('확인한 목표 버전을 함께 보내주세요.');
+  await assertNotRestricted(user.id, new Date(), '참여 신청할');
   const project = b.projectId;
   const db = database();
   const row = await db
@@ -264,11 +274,6 @@ export async function setListed(
           'UPDATE project_policy SET listed=? WHERE project_id=? AND EXISTS(SELECT 1 FROM sprints WHERE owner=? AND mutation=?)',
         )
         .bind(listed, project, project, m),
-      database()
-        .prepare(
-          'UPDATE hub_projects SET listed=? WHERE project_id=? AND EXISTS(SELECT 1 FROM sprints WHERE owner=? AND mutation=?)',
-        )
-        .bind(listed, project, project, m),
     ],
     ['draft', 'active'],
     {
@@ -345,6 +350,11 @@ export async function decideJoin(
     throw new PolicyError(
       `시작 후 ${JOIN_WINDOW_HOURS}시간이 지나 목록 신청은 승인할 수 없습니다. 이메일 초대를 이용해주세요.`,
       410,
+    );
+  if ((await reviewDuties(req.user_id, now)).restriction)
+    throw new PolicyError(
+      '이 사람은 동료평가를 내지 않아 지금 팀에 참여할 수 없습니다.',
+      403,
     );
   const rows = await readMembers(project);
   if (rows.some((r) => r.userId === req.user_id))

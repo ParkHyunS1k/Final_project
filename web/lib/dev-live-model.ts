@@ -6,7 +6,7 @@
 // ai-extraction.ts의 validateChanges()를 그대로 통과해야 하며, 이 파일은
 // 그 검증을 우회하는 경로를 만들지 않는다.
 import type { ExtractionInput, Model, RawChange } from './ai-extraction';
-import { buildPrompt } from './ai-extraction';
+import { buildPrompt, neutralizeSourceTags } from './ai-extraction';
 
 const API_URL = 'https://api.openai.com/v1/responses';
 const DEFAULT_MODEL = 'gpt-6.1-sol';
@@ -28,6 +28,10 @@ type LiveChangeItem = {
   title: string | null;
   person: number | null;
   remaining: number | null;
+  /** remaining이 원문에 적힌 값이면 fact, 모델이 추정했으면 estimate. */
+  remainingBasis: 'fact' | 'estimate' | null;
+  /** createTask의 dueAt이 원문에 근거하면 fact, 추정했으면 estimate. */
+  dueBasis: 'fact' | 'estimate' | null;
   status: 'todo' | 'in_progress' | null;
   dueAt: string | null;
   evidenceQuote: string | null;
@@ -65,9 +69,25 @@ const SCHEMA = {
             type: ['integer', 'null'],
             description: '팀원 목록의 person 번호. 근거가 없으면 null.',
           },
-          remaining: { type: ['number', 'null'], description: '남은 공수(시간).' },
+          remaining: {
+            type: ['number', 'null'],
+            description: '남은 공수(시간). createTask면 항상 채운다(원문에 없으면 추정).',
+          },
+          remainingBasis: {
+            type: ['string', 'null'],
+            enum: ['fact', 'estimate', null],
+            description: 'remaining이 원문에 적힌 값이면 fact, 추정했으면 estimate. remaining이 없으면 null.',
+          },
           status: { type: ['string', 'null'], enum: ['todo', 'in_progress', null] },
-          dueAt: { type: ['string', 'null'], description: 'ISO 8601 날짜/시각 문자열.' },
+          dueAt: {
+            type: ['string', 'null'],
+            description: 'ISO 8601 날짜/시각 문자열. createTask면 마감(원문에 없으면 추정, 시작 전이면 null).',
+          },
+          dueBasis: {
+            type: ['string', 'null'],
+            enum: ['fact', 'estimate', null],
+            description: 'createTask의 dueAt이 원문에 근거하면 fact, 추정했으면 estimate. dueAt이 없으면 null.',
+          },
           evidenceQuote: {
             type: ['string', 'null'],
             description: '원문(<source> 안)에서 그대로 옮긴 근거 문장. 요약하거나 고치지 않는다.',
@@ -81,8 +101,10 @@ const SCHEMA = {
           'title',
           'person',
           'remaining',
+          'remainingBasis',
           'status',
           'dueAt',
+          'dueBasis',
           'evidenceQuote',
           'basis',
         ],
@@ -212,7 +234,9 @@ function sleep(ms: number) {
  * 여기서 다시 구한다. 원문에 없는 문장이면 근거를 아예 버린다(만들어내지 않는다). */
 function locateQuote(body: string, quote: string | null): RawChange['evidence'] {
   if (!quote) return null;
-  const start = body.indexOf(quote);
+  // 모델은 <source 태그가 ‹로 바뀐 원문을 본다. 같은 길이라 그 위치가 원문 위치다.
+  let start = body.indexOf(quote);
+  if (start === -1) start = neutralizeSourceTags(body).indexOf(quote);
   if (start === -1) return null;
   return { start, end: start + quote.length, quote };
 }
@@ -224,6 +248,9 @@ function buildAfter(item: LiveChangeItem): Record<string, unknown> {
         title: item.title,
         person: item.person,
         remaining: item.remaining,
+        ...(item.remainingBasis === 'estimate' ? { remainingEstimated: true } : {}),
+        dueAt: item.dueAt,
+        ...(item.dueBasis === 'estimate' ? { dueEstimated: true } : {}),
         // 이 어댑터는 새 업무 사이의 의존관계는 제안하지 않는다(스키마 범위 밖).
         dependsOn: [],
       };

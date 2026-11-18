@@ -38,8 +38,18 @@ const schema = {
     questions: { type: 'array', items: { type: 'string' } },
   },
 };
+function careerProvider() {
+  if (process.env.CAREERFLOW_AI_PROVIDER)
+    return process.env.CAREERFLOW_AI_PROVIDER;
+  if (
+    process.env.CAREERFLOW_LOCAL_ENGINE === 'focused-lora' ||
+    process.env.CAREERFLOW_LOCAL_MODEL
+  )
+    return 'local';
+  return 'openai';
+}
 export function careerAiInfo() {
-  const provider = process.env.CAREERFLOW_AI_PROVIDER || 'local';
+  const provider = careerProvider();
   if (provider === 'openai')
     return {
       provider,
@@ -70,7 +80,7 @@ export function careerAiConfigured() {
   return careerAiInfo().configured;
 }
 export async function analyzeWithAI(input: ProfileInput) {
-  const provider = process.env.CAREERFLOW_AI_PROVIDER || 'local';
+  const provider = careerProvider();
   if (provider === 'local')
     return process.env.CAREERFLOW_LOCAL_ENGINE === 'focused-lora'
       ? analyzeFocused(input)

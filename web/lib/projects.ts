@@ -40,6 +40,7 @@ export class AccessError extends Error {
   }
 }
 import type { Identity } from './auth';
+import { assertNotRestricted, reviewDuties } from './sanction';
 import {
   DAILY_INVITE_LIMIT,
   deliverInvite,
@@ -117,22 +118,27 @@ export function actorOf(row: MemberRow): Actor {
 }
 export async function listProjects(user: Identity) {
   await adoptLegacy(user);
+  return projectRows(user.id);
+}
+/** 사용자의 프로젝트(떠난 것 포함). 이전 기록 가져오기는 하지 않는다(일괄 계산·공개 프로필용). */
+export async function projectRows(userId: string, now = new Date()) {
   const result = await database()
     .prepare(
-      'SELECT s.owner AS id,s.title,s.revision,m.role,p.lifecycle,p.started_at,p.deadline_at,p.duration_days FROM sprints s JOIN project_members m ON m.project_id=s.owner LEFT JOIN project_policy p ON p.project_id=s.owner WHERE m.user_id=? ORDER BY s.updated_at DESC,s.owner',
+      'SELECT s.owner AS id,s.title,s.revision,m.role,m.left_at,p.lifecycle,p.started_at,p.deadline_at,p.completed_at,p.duration_days FROM sprints s JOIN project_members m ON m.project_id=s.owner LEFT JOIN project_policy p ON p.project_id=s.owner WHERE m.user_id=? ORDER BY s.updated_at DESC,s.owner',
     )
-    .bind(user.id)
+    .bind(userId)
     .all<{
       id: string;
       title: string;
       revision: number;
       role: string;
+      left_at: Date | null;
       lifecycle: string | null;
       started_at: Date | null;
       deadline_at: Date | null;
+      completed_at: Date | null;
       duration_days: number | null;
     }>();
-  const now = new Date();
   return result.results.map((r) => ({
     ...r,
     lifecycle: r.lifecycle
@@ -163,11 +169,14 @@ export async function projectState(project: string, user: Identity) {
         'SELECT goal,deliverables,completion_criteria,legacy FROM project_details WHERE project_id=?',
       )
       .bind(project),
+    // 연결된 GitHub 아이디는 같은 프로젝트 현재 멤버에게만 보인다(나간 사람이 볼 때는 숨긴다).
     db
       .prepare(
-        'SELECT display_name,role,person,agreed_at,agreed_goal_version,joined_at,left_at,left_note FROM project_members WHERE project_id=? ORDER BY person',
+        'SELECT m.display_name,m.role,m.person,m.agreed_at,m.agreed_goal_version,m.joined_at,m.left_at,m.left_note,' +
+          'CASE WHEN ? THEN NULL ELSE g.login END AS github_login' +
+          ' FROM project_members m LEFT JOIN github_accounts g ON g.user_id=m.user_id WHERE m.project_id=? ORDER BY m.person',
       )
-      .bind(project),
+      .bind(Boolean(me.left_at), project),
     db
       .prepare(
         "SELECT id,email,expires_at,status,email_status,email_sent_at,email_sends FROM project_invites WHERE project_id=? AND ?='owner' ORDER BY created_at DESC LIMIT 20",
@@ -179,7 +188,7 @@ export async function projectState(project: string, user: Identity) {
     // 공개 팀 목록에서 들어온 대기 신청. 팀장에게만 표시 이름을 보여준다.
     db
       .prepare(
-        "SELECT id,display_name,goal_version,created_at FROM project_join_requests WHERE project_id=? AND status='pending' AND ?='owner' ORDER BY created_at,id LIMIT 20",
+        "SELECT id,user_id,display_name,goal_version,created_at FROM project_join_requests WHERE project_id=? AND status='pending' AND ?='owner' ORDER BY created_at,id LIMIT 20",
       )
       .bind(project, me.role),
   ]);
@@ -198,7 +207,13 @@ export async function projectState(project: string, user: Identity) {
     members: members.results,
     invites: invites.results,
     listed: Boolean(listing.results[0]?.listed),
-    joinRequests: joinRequests.results,
+    // ponytail: 신청자 수만큼 제재를 조회한다(최대 20건). 신청자 계정 ID는 내보내지 않는다.
+    joinRequests: await Promise.all(
+      joinRequests.results.map(async ({ user_id, ...r }) => ({
+        ...r,
+        restricted: Boolean((await reviewDuties(String(user_id), new Date())).restriction),
+      })),
+    ),
   };
 }
 // 멤버만 읽는 내보내기. 다른 멤버의 이메일·인증 정보는 포함하지 않는다.
@@ -219,7 +234,7 @@ export async function exportProject(project: string, user: Identity) {
       .bind(project),
     db
       .prepare(
-        'SELECT task_id,note,remaining,created_at FROM sprint_checkins WHERE owner=? ORDER BY created_at',
+        'SELECT task_id,note,remaining,created_at,report_id,blocker,person,author_person,done FROM sprint_checkins WHERE owner=? ORDER BY created_at',
       )
       .bind(project),
   ]);
@@ -294,6 +309,10 @@ export async function createProject(
     duration: assertDuration(b.duration),
   };
   if (b.agreed !== true) throw new Error('목표와 완료 기준을 확인해주세요.');
+  // 직접 만들기의 '팀으로 시작 + 팀 찾기에 공개'. 없으면 비공개로 만든다.
+  if (b.listed !== undefined && typeof b.listed !== 'boolean')
+    throw new Error('공개 여부를 선택해주세요.');
+  await assertNotRestricted(user.id, new Date(), '새 프로젝트를 만들');
   const id = 'p_' + crypto.randomUUID();
   const db = database();
   const now = new Date().toISOString();
@@ -310,15 +329,15 @@ export async function createProject(
       .bind(id, user.id, v.goal, [], v.completion, now),
     db
       .prepare(
-        'INSERT INTO project_policy(project_id,lifecycle,goal_version,duration_days,created_at,min_members,completion_mode) VALUES(?,?,1,?,?,?,?)',
+        'INSERT INTO project_policy(project_id,lifecycle,goal_version,duration_days,created_at,completion_mode,listed) VALUES(?,?,1,?,?,?,?)',
       )
       .bind(
         id,
         'draft',
         v.duration,
         now,
-        1,
         options?.simple ? 'tasks' : 'deliverables',
+        b.listed === true,
       ),
     db
       .prepare(
@@ -557,6 +576,7 @@ export async function acceptInvite(
   if (!Number.isInteger(confirmedGoalVersion))
     throw new Error('확인한 목표 버전을 함께 보내주세요.');
   const { invite, details } = await inspectInvite(user, token);
+  await assertNotRestricted(user.id, new Date(), '초대를 수락할');
   const project = String(invite.project_id);
   const db = database();
   const already = await db

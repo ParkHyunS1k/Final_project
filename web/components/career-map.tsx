@@ -54,28 +54,5 @@ export function CareerMap() {
       </p>
     );
   if (!data) return <output>나의 경험을 불러오는 중입니다…</output>;
-  return (
-    <div className="career-map-page">
-      <Graph graph={graph} />
-      <section className="studio-activity">
-        <div>
-          <small>내 활동 기록</small>
-          <h3>레벨 {data.hub.stats.level}</h3>
-          <p>{data.hub.stats.points}점</p>
-        </div>
-        <div>
-          <strong>{data.hub.stats.days}일</strong>
-          <span>학습 기록</span>
-        </div>
-        <div>
-          <strong>{data.experiences.filter((e) => e.valid).length}개</strong>
-          <span>유효한 경험 기록</span>
-        </div>
-        <p className="cf-help">
-          현재 점수는 학습일당 10점, 유효한 경험 기록당 30점입니다. 채용
-          경쟁력이나 전체 사용자 순위를 뜻하지 않습니다.
-        </p>
-      </section>
-    </div>
-  );
+  return <Graph graph={graph} />;
 }

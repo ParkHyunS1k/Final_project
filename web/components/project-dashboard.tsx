@@ -1,16 +1,21 @@
 'use client';
 /* eslint-disable next/no-html-link-for-pages -- Sites sign-in requires top-level navigation, without router prefetch. */
+import { PeerReviewCard } from '@/components/peer-review';
+import {
+  CheckinCelebration,
+  celebrationFor,
+} from '@/components/checkin-celebration';
+import { restrictionMessage } from '@/lib/score';
 import { useEffect, useState, useCallback } from 'react';
 import { TaskEditor } from '@/components/task-editor';
 import { TaskCollection } from '@/components/task-collection';
 import { ChangeReview } from '@/components/change-review';
 import { RaceHome, TeamCheckins } from '@/components/race-home';
 import { TensionLayer } from '@/components/tension-layer';
-import { TeamListing } from '@/components/team-directory';
+import { ProjectOverview } from '@/components/project-overview';
+import { ProjectRepo } from '@/components/github-issues';
 import {
   ProjectWorkspace,
-  ProjectDetails,
-  TeamInvites,
   type ProjectMeta,
   type WorkspaceNav,
   workspaceViews,
@@ -18,7 +23,7 @@ import {
 import { reportChoices, sprintDay, type View } from '@/lib/race';
 import { RaceClock } from '@/components/race-clock';
 import { SidebarTrigger } from '@/components/ui/sidebar';
-import { Check, Clock3, Sparkles, ShieldCheck } from 'lucide-react';
+import { Check, Sparkles } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -27,10 +32,6 @@ import {
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from '@/components/ui/native-select';
 import {
   people as samplePeople,
   seoulTime,
@@ -46,6 +47,8 @@ type Task = Wire<ServerTask>;
 import { meetingSuggestions } from '@/lib/meeting-suggestions';
 import { apiFetch, signInWithGoogle } from '@/lib/supabase-browser';
 import { GoalEditor } from '@/components/goal-editor';
+import { LapReportSheet, prChips } from '@/components/lap-report';
+import type { Pull } from '@/lib/github-prs';
 
 export type Lifecycle = 'legacy' | 'draft' | 'active' | 'completed' | 'expired';
 export type Deliverable = {
@@ -62,13 +65,14 @@ export type Deliverable = {
 };
 type State = ProjectMeta & {
   asOf: string;
+  listed?: boolean;
+  joinRequests?: { id: string; display_name: string; goal_version: number; created_at: string; restricted?: boolean }[];
   lifecycle: Lifecycle;
   policy: {
     goalVersion: number;
     durationDays: number;
     dailyHours: number;
     completionMode?: 'tasks' | 'deliverables';
-    minMembers?: number;
     startedAt: string | null;
     deadlineAt: string | null;
     completedAt: string | null;
@@ -111,11 +115,19 @@ type State = ProjectMeta & {
     created_at: string;
   }[];
 };
-type Modal = 'checkin' | 'evidence' | null;
-export default function ProjectDashboard() {
+export type DashboardState = State;
+type Modal = 'evidence' | null;
+export default function ProjectDashboard({
+  onProject,
+  teamExtra,
+}: {
+  onProject?: (id: string) => void;
+  /** 프로젝트 탭 팀원 구역 끝에 덧붙일 내용(통합 앱: 홈에서 관심을 보낸 사람). reload는 이 화면 상태를 다시 읽는다. */
+  teamExtra?: (projectId: string, reload: () => Promise<unknown>) => React.ReactNode;
+}) {
   return (
-    <ProjectWorkspace embedded>
-      {(id, nav) => <Dashboard key={id} projectId={id} nav={nav} />}
+    <ProjectWorkspace embedded onSelect={onProject}>
+      {(id, nav) => <Dashboard key={id} projectId={id} nav={nav} teamExtra={teamExtra} />}
     </ProjectWorkspace>
   );
 }
@@ -141,9 +153,11 @@ const PHASE: Record<Lifecycle, { label: string; note: string }> = {
 function Dashboard({
   projectId,
   nav,
+  teamExtra,
 }: {
   projectId: string;
   nav: WorkspaceNav;
+  teamExtra?: (projectId: string, reload: () => Promise<unknown>) => React.ReactNode;
 }) {
   const { view: tab, setView: setTab, mine, setMine } = nav;
   const [reviewing, setReviewing] = useState(false);
@@ -156,10 +170,11 @@ function Dashboard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [celebration, setCelebration] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
-  const [note, setNote] = useState('');
-  const [taskId, setTaskId] = useState(1);
-  const [remaining, setRemaining] = useState(2);
+  // 오늘의 랩 기록(2026-11-16): 진행 보고는 오른쪽 패널에서 내 업무 전체를 한 번에.
+  const [lapOpen, setLapOpen] = useState(false);
+  const [lapPulls, setLapPulls] = useState<Record<number, Pull[]>>({});
   const [evidenceId, setEvidenceId] = useState('');
   const [evidence, setEvidence] = useState('');
   const [editingTask, setEditingTask] = useState<Task | null | undefined>(
@@ -287,6 +302,13 @@ function Dashboard({
       }
       setState(body);
       setNotice(message);
+      setCelebration(
+        celebrationFor(
+          action,
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+          Math.random(),
+        ),
+      );
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : '저장하지 못했습니다.');
@@ -337,15 +359,17 @@ function Dashboard({
     }
   }
   function openCheckin() {
-    const t = reportable.first;
-    if (!t) {
+    if (!myOpen.length) {
       setNotice('본인에게 배정된 진행 중인 업무가 없습니다.');
       return;
     }
-    setTaskId(t.id);
-    setRemaining(t.remaining);
-    setNote('');
-    setDialog('checkin');
+    setError('');
+    setLapOpen(true);
+    // 연결된 PR은 '오늘 한 일' 칩과 완료 근거 미리 채우기에만 쓴다. 못 읽어도 보고는 된다.
+    apiFetch('/api/github-prs?project=' + encodeURIComponent(projectId))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => setLapPulls(body?.links ?? {}))
+      .catch(() => setLapPulls({}));
   }
   const s = state?.sprint;
   const people = s?.people ?? samplePeople;
@@ -358,7 +382,6 @@ function Dashboard({
     state.me.agreedGoalVersion === state.policy.goalVersion &&
     !state.me.leftAt;
   const tasks = s?.tasks ?? [];
-  const done = tasks.filter((t) => t.done).length;
   const meetingProposals =
     state && plan
       ? meetingSuggestions(
@@ -376,6 +399,14 @@ function Dashboard({
   const reportable = state
     ? reportChoices(tasks, state.me, isOwner)
     : { open: [] as Task[], first: null };
+  // 랩 기록은 내 업무만(팀장도). 대신 보고는 API에서만 허용한다.
+  // 패널은 20개까지라 마감이 가까운 순(마감 없는 업무는 뒤)으로 놓는다.
+  const myOpen = state
+    ? tasks
+        .filter((t) => !t.done && t.person === state.me.person)
+        .sort((a, b) => (a.dueAt ? Date.parse(a.dueAt) : Infinity) - (b.dueAt ? Date.parse(b.dueAt) : Infinity))
+    : [];
+  const myName = state?.members.find((m) => m.person === state.me.person)?.display_name ?? '';
   const onClockZero = useCallback(() => {
     void load().catch(() => {});
   }, [load]);
@@ -427,6 +458,7 @@ function Dashboard({
                   {phase.label}
                 </span>
               </div>
+              {nav.picker}
               <RaceClock
                 lifecycle={lifecycle}
                 deadline={deadline}
@@ -445,6 +477,7 @@ function Dashboard({
                 </button>
               )}
             </header>
+            {nav.tabs && <div className="race-views-row">{nav.tabs}</div>}
             {phase.note && (
               <output className="work-health">
                 <span
@@ -517,10 +550,19 @@ function Dashboard({
                   시작하면 그 시각부터 {state!.policy?.durationDays}일 뒤가 최종
                   기한이며, 합의한 목표·범위와 기한은 더 이상 바꿀 수 없습니다.
                 </p>
+                {isOwner && nav.restriction && (
+                  <output className="hint restriction-hint">
+                    {restrictionMessage(nav.restriction, '스프린트를 시작할')}
+                  </output>
+                )}
                 {isOwner && (
                   <button
                     className="btn primary"
-                    disabled={busy || !state!.readiness.ready}
+                    disabled={
+                      busy ||
+                      !state!.readiness.ready ||
+                      Boolean(nav.restriction)
+                    }
                     onClick={() =>
                       mutate(
                         'start',
@@ -536,6 +578,16 @@ function Dashboard({
             )}
             {tab === 'home' && (
               <section className="work-section">
+                {(lifecycle === 'completed' || lifecycle === 'expired') && (
+                  <PeerReviewCard
+                    projectId={projectId}
+                    asOf={state!.asOf}
+                    solo={state!.members.filter((m) => !m.left_at).length === 1}
+                    restriction={nav.restriction}
+                    owed={nav.reviewPending.includes(projectId)}
+                    onOwe={nav.refreshReviews}
+                  />
+                )}
                 {lifecycle !== 'draft' && (
                   <RaceHome
                     lifecycle={lifecycle}
@@ -653,9 +705,11 @@ function Dashboard({
                     me={state!.me}
                     writable={writable && agreedToGoal && !state!.me.leftAt}
                     onApplied={(next) => setState(next as State)}
+                    onSetupRepo={() => setTab('project')}
                   />
                 ) : (
                   <TaskCollection
+                    projectId={projectId}
                     sprint={s}
                     plan={plan}
                     asOf={state!.asOf}
@@ -690,9 +744,16 @@ function Dashboard({
               </section>
             )}
             {tab === 'project' && (
-              <section className="work-section project-stack">
-                <ProjectDetails state={state!} />
-                {state!.me.role === 'owner' &&
+              <ProjectOverview
+                state={state!}
+                lifecycle={lifecycle}
+                phaseLabel={phase.label}
+                colors={people.map((p) => p.color)}
+                writable={writable}
+                canEdit={writable && agreedToGoal}
+                busy={busy}
+                goalEditor={
+                  state!.me.role === 'owner' &&
                   lifecycle === 'draft' &&
                   state!.policy?.completionMode !== 'tasks' &&
                   state!.agreement && (
@@ -708,245 +769,42 @@ function Dashboard({
                         )
                       }
                     />
-                  )}
-                <section className="project-block">
-                  <div className="section-heading">
-                    <h2>팀원 · {state!.members.length}/4명</h2>
-                  </div>
-                  <div className="team-card">
-                    {state!.members.map((m) => (
-                      <div className="member" key={m.person}>
-                        <span
-                          className="avatar"
-                          style={{
-                            background: people[m.person]?.color ?? '#e2e2de',
-                          }}
-                        >
-                          {m.display_name.slice(0, 1)}
-                        </span>
-                        <div>
-                          <b>{m.display_name}</b>
-                          <span>
-                            {m.role === 'owner' ? '팀장' : '팀원'} ·{' '}
-                            {/* 2026-10-15에 참여 중단 기능을 뺐다. 그 전에 남은 기록만 표시한다. */}
-                            {m.left_at
-                              ? '참여 중단'
-                              : m.agreed_goal_version ===
-                                  state!.policy?.goalVersion
-                                ? `목표 v${m.agreed_goal_version} 동의`
-                                : '재동의 필요'}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <TeamInvites
-                    state={state!}
-                    refresh={load}
-                    link={inviteLink}
-                    setLink={setInviteLink}
-                    writable={writable}
+                  )
+                }
+                repo={
+                  <ProjectRepo
+                    projectId={projectId}
+                    writable={writable && agreedToGoal && !state!.me.leftAt}
                   />
-                  <TeamListing
-                    state={state!}
-                    refresh={load}
-                    writable={writable}
-                  />
-                </section>
-                <section className="project-block">
-                  <div className="section-heading">
-                    <h2>
-                      진행 기록 ·{' '}
-                      {state!.policy?.completionMode === 'tasks'
-                        ? '업무'
-                        : '결과물'}{' '}
-                      {state!.completion.confirmed}/{state!.completion.total}
-                    </h2>
-                  </div>
-                  {state!.policy?.completionMode === 'tasks' ? (
-                    <div className="project-panel">
-                      <h3>완료한 업무가 나의 경험으로 남아요.</h3>
-                      <p>
-                        별도의 필수 결과물이나 완료 기준 입력은 없습니다. 진행할
-                        업무를 마치고 실제 수행 근거를 남기면 프로젝트를 완료할
-                        수 있어요.
-                      </p>
-                      <p>
-                        {state!.completion.ready
-                          ? '선택한 업무의 완료와 근거 기록을 확인했습니다.'
-                          : `남은 업무: ${state!.completion.missing.join(', ') || '등록된 업무 없음'}`}
-                      </p>
-                      <div className="hub-actions">
-                        <button
-                          className="btn primary"
-                          disabled={
-                            busy ||
-                            !isOwner ||
-                            lifecycle !== 'active' ||
-                            !state!.completion.ready
-                          }
-                          onClick={() =>
-                            mutate(
-                              'finish',
-                              {},
-                              '프로젝트 완료를 기록했습니다.',
-                            )
-                          }
-                        >
-                          {lifecycle === 'completed'
-                            ? '완료 기록 저장됨'
-                            : '프로젝트 완료 기록'}
-                        </button>
-                        <a
-                          className="btn"
-                          href={
-                            '/app?tab=experience&project=' +
-                            encodeURIComponent(projectId)
-                          }
-                        >
-                          나의 경험으로 가져오기
-                        </a>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="refund-grid">
-                      <div className="refund-main">
-                        <ShieldCheck size={30} />
-                        <h2>
-                          완주는 처음 약속한 결과물로,
-                          <br />
-                          보고 횟수로 판정하지 않아요.
-                        </h2>
-                        <p>
-                          체크리스트를 모두 끝냈는지와 합의한 결과물을
-                          달성했는지는 다릅니다. 업무 {done}/{tasks.length}개가
-                          완료되어도 필수 결과물이 미확인이면 완주할 수
-                          없습니다.
-                        </p>
-                        <div className="receipt">
-                          <div>
-                            <span>이용료 예시</span>
-                            <b>100,000원</b>
-                          </div>
-                          <div>
-                            <span>보증금 예시</span>
-                            <b>200,000원</b>
-                          </div>
-                          <div className="receipt-total">
-                            <span>실제 결제·환급</span>
-                            <b>연결 안 됨</b>
-                          </div>
-                        </div>
-                        <p>
-                          결과물 근거 확인과 금전 환급 판정은 별개입니다. AI가
-                          증빙의 진실성을 자동으로 보증하지 않습니다.
-                        </p>
-                      </div>
-                      <div className="refund-criteria">
-                        <span className="eyebrow">완주 기준</span>
-                        <h3>합의한 결과물</h3>
-                        {state!.deliverables.map((d) => (
-                          <div className="criterion" key={d.deliverableId}>
-                            <span
-                              className={
-                                d.confirmed
-                                  ? 'criteria-check ok'
-                                  : 'criteria-check'
-                              }
-                            >
-                              {d.confirmed ? (
-                                <Check size={16} />
-                              ) : (
-                                <Clock3 size={16} />
-                              )}
-                            </span>
-                            <div>
-                              <b>{d.title}</b>
-                              <p>{d.evidence || '근거가 아직 없습니다.'}</p>
-                              {writable && agreedToGoal && (
-                                <>
-                                  <button
-                                    className="text-link"
-                                    disabled={busy}
-                                    onClick={() => {
-                                      setEvidenceId(d.deliverableId);
-                                      setEvidence(d.evidence);
-                                      setDialog('evidence');
-                                    }}
-                                  >
-                                    근거 기록·수정
-                                  </button>
-                                  {isOwner && (
-                                    <button
-                                      className="text-link"
-                                      disabled={busy || !d.evidence}
-                                      onClick={() =>
-                                        mutate(
-                                          'deliverableConfirm',
-                                          {
-                                            deliverableId: d.deliverableId,
-                                            confirmed: !d.confirmed,
-                                          },
-                                          d.confirmed
-                                            ? '확인을 취소했습니다.'
-                                            : '팀장 확인을 저장했습니다.',
-                                        )
-                                      }
-                                    >
-                                      {d.confirmed
-                                        ? '확인 취소'
-                                        : '팀장이 직접 확인'}
-                                    </button>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                        <button
-                          className="btn primary wide"
-                          disabled={
-                            busy ||
-                            !isOwner ||
-                            lifecycle !== 'active' ||
-                            !state!.completion.ready
-                          }
-                          onClick={() =>
-                            mutate(
-                              'finish',
-                              {},
-                              '완주 확인을 저장했습니다. 실제 환급은 발생하지 않습니다.',
-                            )
-                          }
-                        >
-                          {lifecycle === 'completed'
-                            ? '완주 기록 저장됨'
-                            : '기한 내 완주 확인'}
-                        </button>
-                        <p className="tiny muted">
-                          확인 자료는 코드 저장소와 실행 방법, 핵심 기능 데모
-                          또는 영상, 팀원별 기여 내용입니다. 배포 URL은
-                          프로젝트에서 별도 합의한 경우에만 필요합니다.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </section>
-                <section className="project-block">
-                  <div className="section-heading">
-                    <h2>기타</h2>
-                  </div>
-                  <div className="project-actions">
-                    <button
-                      className="btn"
-                      disabled={busy}
-                      onClick={exportProject}
-                    >
-                      내보내기
-                    </button>
-                  </div>
-                </section>
-              </section>
+                }
+                // 초대는 프로젝트 revision을 올리므로 이 화면도 다시 읽어야 공개 설정이 409가 나지 않는다.
+                teamExtra={teamExtra?.(projectId, load)}
+                inviteLink={inviteLink}
+                setInviteLink={setInviteLink}
+                refresh={load}
+                onFinish={() =>
+                  void mutate(
+                    'finish',
+                    {},
+                    state!.policy?.completionMode === 'tasks'
+                      ? '프로젝트 완료를 기록했습니다.'
+                      : '완주 확인을 저장했습니다. 실제 환급은 발생하지 않습니다.',
+                  )
+                }
+                onEvidence={(d) => {
+                  setEvidenceId(d.deliverableId);
+                  setEvidence(d.evidence);
+                  setDialog('evidence');
+                }}
+                onConfirm={(d) =>
+                  void mutate(
+                    'deliverableConfirm',
+                    { deliverableId: d.deliverableId, confirmed: !d.confirmed },
+                    d.confirmed ? '확인을 취소했습니다.' : '팀장 확인을 저장했습니다.',
+                  )
+                }
+                onExport={() => void exportProject()}
+              />
             )}
           </>
         )}
@@ -980,6 +838,34 @@ function Dashboard({
           }
         />
       )}
+      {celebration && (
+        <CheckinCelebration
+          src={celebration}
+          onDone={() => setCelebration(null)}
+        />
+      )}
+      {state && (
+        <LapReportSheet
+          open={lapOpen}
+          onOpenChange={setLapOpen}
+          subtitle={`${myName} · ${seoulTime(state.asOf).slice(5, 10).replace('-', '/')} (KST)`}
+          tasks={myOpen}
+          chips={prChips(lapPulls, myOpen, state.asOf)}
+          evidenceFor={(id) =>
+            (lapPulls[id] ?? [])
+              .filter((p) => p.state === 'merged')
+              .map((p) => `PR #${p.number} ${p.title} ${p.url}`)
+              .join('\n')
+          }
+          busy={busy}
+          error={lapOpen ? error : ''}
+          onSubmit={async (body) => {
+            const ok = await mutate('report', body, '진행 보고를 저장하고 예상 일정을 재계산했습니다.');
+            if (ok) setLapOpen(false);
+            return ok;
+          }}
+        />
+      )}
       <Dialog
         open={dialog !== null}
         onOpenChange={(open) => {
@@ -987,80 +873,11 @@ function Dashboard({
         }}
       >
         <DialogContent className="demo-dialog">
-          <DialogTitle>
-            {dialog === 'checkin' ? '진행 보고' : '결과물 근거 기록'}
-          </DialogTitle>
+          <DialogTitle>결과물 근거 기록</DialogTitle>
           <DialogDescription>
-            {dialog === 'checkin'
-              ? '막힌 점과 남은 공수를 저장하면 예상 종료를 다시 계산합니다. 보고가 없어도 완주 판정은 결과물 기준입니다.'
-              : '저장소와 실행 방법, 데모 또는 영상, 팀원별 기여를 남겨주세요. 팀장이 사람의 판단으로 확인합니다.'}
+            저장소와 실행 방법, 데모 또는 영상, 팀원별 기여를 남겨주세요. 팀장이 사람의 판단으로 확인합니다.
           </DialogDescription>
-          {dialog === 'checkin' ? (
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (
-                  await mutate(
-                    'checkin',
-                    { taskId, note, remaining },
-                    '진행 보고를 저장하고 예상 일정을 재계산했습니다.',
-                  )
-                )
-                  setDialog(null);
-              }}
-            >
-              <label className="input-label" htmlFor="checkin-task">
-                보고할 업무
-              </label>
-              <NativeSelect
-                id="checkin-task"
-                value={taskId}
-                onChange={(e) => {
-                  const id = Number(e.target.value);
-                  setTaskId(id);
-                  setRemaining(
-                    s?.tasks.find((t) => t.id === id)?.remaining ?? 0,
-                  );
-                }}
-              >
-                {reportable.open.map((t) => (
-                  <NativeSelectOption key={t.id} value={t.id}>
-                    {t.title}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-              <label className="input-label" htmlFor="remaining">
-                앞으로 남은 시간
-              </label>
-              <input
-                id="remaining"
-                type="number"
-                min="0"
-                max="200"
-                step="0.5"
-                required
-                value={remaining}
-                onChange={(e) => setRemaining(Number(e.target.value))}
-              />
-              <label className="input-label" htmlFor="note">
-                완료한 것 · 막힌 점
-              </label>
-              <textarea
-                id="note"
-                rows={4}
-                maxLength={1000}
-                required
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-              />
-              <button
-                className="btn primary wide"
-                disabled={busy || !note.trim()}
-              >
-                저장하고 재계산
-              </button>
-            </form>
-          ) : dialog === 'evidence' ? (
+          {dialog === 'evidence' ? (
             <form
               onSubmit={async (e) => {
                 e.preventDefault();

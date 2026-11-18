@@ -1,1 +1,4 @@
-{ "regions": ["icn1"] }
+{
+  "regions": ["icn1"],
+  "crons": [{ "path": "/api/internal/profile-scores", "schedule": "0 18 * * *" }]
+}

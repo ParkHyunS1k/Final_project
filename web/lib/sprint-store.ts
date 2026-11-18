@@ -87,6 +87,7 @@ export async function readSprint(owner: string): Promise<Sprint | null> {
       dueAt: (t.due_at as Date | null) ?? null,
       deadlineVersion: Number(t.deadline_version ?? 0),
       changeVersion: Number(t.change_version ?? 0),
+      touchedAt: (t.touched_at as Date | null) ?? null,
       dependsOn: results[2].results
         .filter((d) => d.task_id === t.id)
         .map((d) => Number(d.depends_on)),
@@ -149,7 +150,7 @@ export function bumpTaskVersion(
 ) {
   return database()
     .prepare(
-      'UPDATE sprint_tasks SET change_version=change_version+1 WHERE owner=? AND id=?' +
+      'UPDATE sprint_tasks SET change_version=change_version+1,touched_at=now() WHERE owner=? AND id=?' +
         ' AND EXISTS(SELECT 1 FROM sprints WHERE owner=? AND mutation=?)',
     )
     .bind(projectId, taskId, projectId, mutation);
@@ -237,9 +238,10 @@ export async function responseState(owner: string, now = new Date()) {
     [
       db
         .prepare(
-          'SELECT id,task_id,note,remaining,created_at FROM sprint_checkins WHERE owner=? ORDER BY created_at DESC LIMIT 20',
+          // 최근 60줄 + 그 안에 한 줄이라도 걸린 보고 묶음 전체(묶음이 잘려 요약이 틀리지 않게).
+          'SELECT id,task_id,note,remaining,created_at,report_id,blocker,person,author_person,done FROM sprint_checkins c WHERE owner=? AND (id IN (SELECT id FROM sprint_checkins WHERE owner=? ORDER BY created_at DESC LIMIT 60) OR report_id IN (SELECT report_id FROM (SELECT report_id FROM sprint_checkins WHERE owner=? ORDER BY created_at DESC LIMIT 60) recent WHERE report_id IS NOT NULL)) ORDER BY created_at DESC',
         )
-        .bind(owner),
+        .bind(owner, owner, owner),
       db
         .prepare(
           'SELECT revision,action,detail,created_at FROM sprint_events WHERE owner=? ORDER BY revision DESC LIMIT 20',

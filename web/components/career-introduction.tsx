@@ -93,7 +93,6 @@ export function CareerIntroduction({
     <section className="intro-card">
       <div className="studio-heading">
         <div>
-          <p className="studio-kicker">IN THREE LINES</p>
           <h2>경험으로 소개하는 나</h2>
           <p>어떤 일을 해왔고, 어떻게 풀어왔는지 짧게 전해요.</p>
         </div>

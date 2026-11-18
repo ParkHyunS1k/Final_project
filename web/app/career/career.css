@@ -170,9 +170,9 @@
   font-size: 13px;
   font-weight: 600;
 }
-.cf-shell input:not([type='checkbox']):not([type='file']),
-.cf-shell textarea,
-.cf-shell select {
+:is(.cf-shell, .my-pending) input:not([type='checkbox']):not([type='file']),
+:is(.cf-shell, .my-pending) textarea,
+:is(.cf-shell, .my-pending) select {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 5px;
@@ -182,39 +182,39 @@
   font-size: 14px;
   min-width: 0;
 }
-.cf-shell textarea {
+:is(.cf-shell, .my-pending) textarea {
   resize: vertical;
   line-height: 1.65;
 }
 .cf-shell select {
   min-height: 43px;
 }
-.cf-shell :focus-visible {
+:is(.cf-shell, .my-pending) :focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 3px;
 }
-.cf-shell input[type='checkbox'] {
+:is(.cf-shell, .my-pending) input[type='checkbox'] {
   accent-color: var(--primary);
   width: 16px;
   height: 16px;
   flex: 0 0 16px;
 }
-.cf-shell fieldset {
+:is(.cf-shell, .my-pending) fieldset {
   border: 0;
   min-width: 0;
 }
-.cf-shell legend {
+:is(.cf-shell, .my-pending) legend {
   font-size: 13px;
   font-weight: 650;
   margin-bottom: 12px;
 }
-.cf-shell .cf-choice-grid {
+:is(.cf-shell, .my-pending) .cf-choice-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px 14px;
   margin: 10px 0;
 }
-.cf-shell .cf-choice-grid label {
+:is(.cf-shell, .my-pending) .cf-choice-grid label {
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -246,12 +246,12 @@
   max-width: 100%;
   font-size: 12px;
 }
-.cf-shell .cf-help {
+:is(.cf-shell, .my-pending) .cf-help {
   font-size: 12px;
   color: var(--muted-foreground);
   font-weight: 400;
 }
-.cf-shell .cf-agreement {
+:is(.cf-shell, .my-pending) .cf-agreement {
   display: flex;
   gap: 10px;
   align-items: flex-start;
@@ -280,7 +280,7 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
-.cf-shell blockquote {
+:is(.cf-shell, .my-pending) blockquote {
   margin: 12px 0;
   padding: 9px 12px;
   border-left: 2px solid var(--border);
@@ -559,4 +559,24 @@
 }
 .cf-review-row input[type='checkbox'] {
   width: auto;
+}
+
+/* 마이페이지 '가져올 수 있는 업무' 양식(.my-pending)도 위 경험 양식 스타일을 같이 쓴다. */
+/* 저장한 이력서가 있으면 결과만 한 줄로(마이페이지 2026-11-17). */
+.cf-columns.cf-results {
+  grid-template-columns: 1fr;
+}
+.cf-resume-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.cf-resume-bar h2 {
+  margin: 0;
+}
+.cf-resume-bar p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted-foreground);
 }

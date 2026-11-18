@@ -24,6 +24,12 @@
   align-items: center;
   color: var(--ink);
   text-decoration: none;
+  /* 버튼이지만 로고처럼 보이게 */
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
+  cursor: pointer;
 }
 .hub-brand > span {
   background: var(--primary);
@@ -32,15 +38,10 @@
   border-radius: 9px;
   font-size: 26px;
 }
-.hub-tagline {
-  font-size: 11px;
-  color: var(--muted-foreground);
-  margin: 13px 0 37px;
-  letter-spacing: -0.2px;
-}
 .hub-sidebar nav {
   display: grid;
   gap: 7px;
+  margin-top: 32px;
 }
 .hub-sidebar nav button {
   display: flex;
@@ -66,40 +67,18 @@
 .hub-sidebar nav button:hover {
   background: var(--muted);
 }
-.hub-sidebar-note {
-  margin-top: auto;
-  background: var(--gray-50);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 19px 15px;
-  font-size: 12px;
-}
-.hub-sidebar-note svg {
-  color: var(--primary);
-}
-.hub-sidebar-note b {
-  display: block;
-  margin: 10px 0;
-}
-.hub-sidebar-note p {
-  line-height: 1.8;
-  color: var(--muted-foreground);
-}
-.hub-sidebar-note button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 15px;
-  font-weight: 600;
-  background: none;
-  border: 0;
-  cursor: pointer;
-}
 .hub-sidebar-bottom {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 9px;
-  margin-top: 24px;
+  margin-top: auto;
+  padding-top: 24px;
+}
+.hub-sidebar-bottom > .hub-user {
+  flex-basis: 100%;
+  padding: 6px 4px 10px;
+  color: var(--ink);
 }
 .hub-sidebar-bottom > a {
   font-size: 11px;
@@ -110,26 +89,6 @@
   margin-left: 234px;
   min-width: 0;
   flex: 1;
-}
-.hub-topbar {
-  height: 86px;
-  padding: 0 42px;
-  background: var(--background);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.hub-topbar > div {
-  display: grid;
-  gap: 3px;
-}
-.hub-topbar > div > span {
-  font-size: 10px;
-  color: var(--muted-foreground);
-}
-.hub-topbar b {
-  font-size: 15px;
 }
 .hub-user {
   display: flex;
@@ -175,6 +134,29 @@
 }
 .hub-main p {
   line-height: 1.8;
+}
+.hub-main .page-header h1 {
+  font-size: 22px;
+  line-height: 1.35;
+  letter-spacing: -0.6px;
+}
+.hub-main .page-header p {
+  line-height: 1.6;
+}
+/* 카드 제목 앞 아이콘(영어 소제목 대신) */
+.hub-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hub-card-title svg {
+  color: var(--heat-700);
+  flex-shrink: 0;
+}
+.hub-card-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--heat-700);
 }
 .hub-eyebrow {
   display: flex;
@@ -516,6 +498,9 @@
   font-size: 11px;
   color: var(--muted-foreground);
 }
+.hub-more {
+  margin-top: 14px;
+}
 .hub-text-button {
   display: inline-flex;
   gap: 7px;
@@ -551,7 +536,8 @@
   color: var(--heat-800);
 }
 .hub-footer {
-  display: flex;
+  /* 데스크톱은 사이드바 아래 '서비스 소개'가 있어 숨긴다. 모바일에서만 보인다. */
+  display: none;
   gap: 20px;
   justify-content: space-between;
   font-size: 11px;
@@ -836,6 +822,8 @@
   background: transparent;
   margin: 0;
   min-width: 0;
+  /* 통합 앱에서는 SidebarInset(flex-1) 대신 section이라 내용 폭만큼만 줄어들었다. 남은 폭을 채운다. */
+  flex: 1;
 }
 .hub-workspace [data-sidebar='trigger'] {
   display: none;
@@ -896,9 +884,6 @@
   }
   .hub-body {
     margin-left: 205px;
-  }
-  .hub-topbar {
-    padding: 0 27px;
   }
   .hub-home-grid {
     grid-template-columns: minmax(0, 1fr) 270px;
@@ -971,8 +956,6 @@
   .hub-brand > span {
     font-size: 23px;
   }
-  .hub-tagline,
-  .hub-sidebar-note,
   .hub-sidebar-bottom {
     display: none;
   }
@@ -994,10 +977,6 @@
   }
   .hub-body {
     margin-left: 0;
-  }
-  .hub-topbar {
-    height: 64px;
-    padding: 0 20px;
   }
   .hub-main {
     padding: 23px 17px 40px;
@@ -1047,6 +1026,7 @@
     padding: 9px;
   }
   .hub-footer {
+    display: flex;
     padding: 18px;
     flex-wrap: wrap;
   }
@@ -1074,4 +1054,506 @@
   .hub-track i {
     transition: none;
   }
+}
+
+/* 홈 시안 v9 (2026-11-09): 맨 위 프로젝트 줄 대신 상단 바에 프로젝트 선택·역할 추천, 바 아래에 화면 전환. */
+.hub-workspace .race-title {
+  flex: 0 1 auto;
+}
+.race-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  min-width: 0;
+}
+.race-picker select,
+.race-picker a {
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+}
+.race-picker select {
+  max-width: 220px;
+  min-width: 0;
+  cursor: pointer;
+}
+.race-picker select option {
+  color: var(--ink);
+  background: var(--background);
+}
+.race-picker a {
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.race-picker a:hover,
+.race-picker select:hover {
+  border-color: color-mix(in srgb, currentColor 50%, transparent);
+}
+.race-clock-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.1;
+}
+.race-clock-wrap small {
+  font-size: 11px;
+  opacity: 0.7;
+}
+.race-views-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: -8px 0 18px;
+}
+.race-views {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--gray-25);
+}
+.race-view {
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-500);
+}
+.race-view:hover {
+  color: var(--ink);
+}
+.race-view.on {
+  background: var(--heat-500);
+  color: #fff;
+}
+@media (max-width: 720px) {
+  .hub-workspace .race-bar {
+    flex-wrap: wrap;
+  }
+  .race-picker {
+    order: 3;
+    width: 100%;
+  }
+  .race-views-row {
+    justify-content: stretch;
+  }
+  .race-views {
+    width: 100%;
+  }
+  .race-view {
+    flex: 1;
+  }
+}
+/* 마이페이지(2026-11-17): 요약 + 활동·경험·설정. */
+.my-summary {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.my-me {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 16px;
+  align-items: center;
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: linear-gradient(120deg, var(--heat-50), var(--background) 60%);
+}
+.my-avatar {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 20px;
+  font-weight: 800;
+}
+.hub-main .my-me h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.my-me p {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.my-grade {
+  display: grid;
+  justify-items: center;
+}
+.my-grade b {
+  font-size: 34px;
+  line-height: 1;
+  color: var(--heat-700);
+}
+.my-grade span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--heat-700);
+  white-space: nowrap;
+}
+.my-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.my-stats > div {
+  display: flex;
+  flex-direction: column-reverse;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--background);
+}
+.my-stats dt {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.my-stats dd {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 700;
+}
+.my-stats .hot dd {
+  color: var(--heat-700);
+}
+.my-meta {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.my-activity {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.my-side {
+  display: grid;
+  gap: 16px;
+}
+.hub-main .my-activity h3,
+.hub-main .my-experience h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+.my-projects ul,
+.my-badges {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.my-projects li + li {
+  border-top: 1px solid var(--border);
+}
+.my-projects li button {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 12px;
+  width: 100%;
+  padding: 12px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.my-projects li button b {
+  font-size: 14px;
+}
+.my-projects li button .my-meta {
+  grid-column: 1;
+}
+.my-projects li button .pill {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+  white-space: nowrap;
+}
+.my-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.my-card-head span {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.my-calendar {
+  display: grid;
+  grid-template-rows: repeat(7, 12px);
+  grid-auto-flow: column;
+  grid-auto-columns: 12px;
+  gap: 3px;
+}
+.my-calendar i {
+  border-radius: 2px;
+  background: var(--gray-100);
+}
+.my-calendar i.on {
+  background: var(--heat-500);
+}
+.my-calendar i.today {
+  outline: 1.5px solid var(--foreground);
+}
+.my-badges {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+.my-badge {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  padding: 10px 6px;
+  border: 1px solid var(--heat-300);
+  border-radius: 10px;
+  font-size: 12px;
+  text-align: center;
+}
+.my-badge small {
+  color: var(--heat-700);
+}
+.my-badge.off {
+  border-color: var(--border);
+  opacity: 0.45;
+}
+.my-now {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+.my-now button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--gray-50);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.my-experience {
+  display: grid;
+  gap: 12px;
+}
+.my-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.my-pending details,
+.my-exp details {
+  border-top: 1px solid var(--border);
+  padding: 10px 0;
+}
+.my-pending summary {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  cursor: pointer;
+}
+.my-exp-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.hub-main .my-exp h3 {
+  margin: 0 0 6px;
+}
+.my-exp p {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.my-exp blockquote {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.my-settings {
+  display: grid;
+  gap: 16px;
+}
+.my-rows > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0;
+}
+.my-rows > div + div {
+  border-top: 1px solid var(--border);
+}
+.my-rows > div:first-child {
+  padding-top: 0;
+}
+.my-rows > div:last-child {
+  padding-bottom: 0;
+}
+.my-rows b {
+  font-size: 14px;
+}
+.my-rows p {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+}
+.my-rows .pill,
+.my-rows .btn {
+  flex-shrink: 0;
+}
+@media (max-width: 720px) {
+  .my-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .my-activity {
+    grid-template-columns: 1fr;
+  }
+  .my-me {
+    grid-template-columns: auto 1fr;
+  }
+  .my-grade {
+    grid-column: 1 / -1;
+    grid-template-columns: auto auto;
+    align-items: baseline;
+    gap: 8px;
+    justify-content: start;
+  }
+}
+.pill.my-ok {
+  background: color-mix(in srgb, var(--good) 14%, transparent);
+  color: var(--good);
+}
+/* 업무 이름은 펼치는 줄에 이미 있다. */
+.hub-main .my-pending .cf-experience h4 {
+  display: none;
+}
+.my-pending .cf-experience p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.my-pending .cf-experience {
+  padding: 12px 0 4px;
+  border-bottom: 0;
+}
+/* 프로필 등급·상위 %·공유(2026-11-17) */
+.my-standing {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.my-standing .my-share-btn {
+  margin-left: auto;
+}
+.my-share {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.my-share-on {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.my-share-on img {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--gray-100);
+}
+.my-share-on .hub-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+.my-share-off p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.my-public fieldset {
+  display: grid;
+  gap: 14px;
+  border: 0;
+  padding: 0;
+  margin: 12px 0 0;
+}
+.my-public label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.my-public input:not([type='checkbox']) {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: inherit;
+  padding: 9px 11px;
+  font: inherit;
+}
+.my-public .my-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  flex-wrap: wrap;
+}
+.my-public input[type='checkbox'] {
+  accent-color: var(--primary);
+  width: 16px;
+  height: 16px;
+}
+.my-pick {
+  display: grid;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.my-pick b {
+  font-size: 13px;
+}
+.my-pick-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.my-error {
+  margin: 0;
+  color: var(--red-700);
+  font-size: 13px;
+}
+.my-public .btn {
+  justify-self: start;
+}
+.my-share-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--heat-700);
+  cursor: pointer;
+}
+.my-share-btn:hover {
+  background: var(--heat-50);
 }

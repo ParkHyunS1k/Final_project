@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Table,
   TableHeader,
@@ -20,7 +20,28 @@ import {
   NativeSelect,
   NativeSelectOption,
 } from '@/components/ui/native-select';
-import { Plus, Columns3, Table2, FileText, Clock3 } from 'lucide-react';
+import {
+  Plus,
+  Columns3,
+  Table2,
+  FileText,
+  Clock3,
+  CalendarClock,
+  Link2,
+  GitPullRequest,
+  GitMerge,
+} from 'lucide-react';
+import { apiFetch } from '@/lib/supabase-browser';
+import {
+  DETAIL_MAX_PULLS,
+  prSuggestion,
+  stalledHours,
+  taskRef,
+  type Pull,
+  type PullDetail,
+} from '@/lib/github-prs';
+import { CHECK_LABEL, CheckIcon, PR_LABEL, PrPanel, stallText, type IssueLink } from './dev-panel';
+import type { IssueStatus } from '@/lib/github-issues';
 import {
   people as samplePeople,
   type Sprint as ServerSprint,
@@ -40,6 +61,8 @@ type Checkin = {
   note: string;
   remaining: number;
   created_at: string;
+  /** 오늘의 랩 기록에서 이 업무에 남긴 막힌 점. 예전 체크인은 없다. */
+  blocker?: string | null;
 };
 type Mutate = (
   action: string,
@@ -51,6 +74,8 @@ const statuses = [
   { id: 'in_progress', label: '진행 중' },
   { id: 'done', label: '완료' },
 ];
+export { PrPanel };
+
 function statusOf(t: Task) {
   return t.done ? 'done' : (t.status ?? 'todo');
 }
@@ -67,6 +92,8 @@ export function TaskCollection({
   mutate,
   onEdit,
   onAdd,
+  projectId,
+  pulls: givenPulls,
 }: {
   sprint: Sprint;
   plan: Plan;
@@ -81,9 +108,105 @@ export function TaskCollection({
   mutate: Mutate;
   onEdit: (task: Task) => void;
   onAdd: () => void;
+  /** 있으면 등록된 저장소의 PR을 읽어 업무에 붙인다. */
+  projectId?: string;
+  /** 업무 id별 연결 PR. 주면 불러오지 않는다(렌더 테스트용). */
+  pulls?: Record<number, Pull[]>;
 }) {
-  const [view, setView] = useState('table');
+  // 보드가 기본이다(2026-11-09). 표는 날짜·예상 완료를 한눈에 볼 때 쓴다.
+  const [view, setView] = useState('board');
+  // PR 연결(2026-11-14): 화면을 열 때 한 번 읽는다. 실패하면 PR 표시만 빠진다.
+  const [loadedPulls, setLoadedPulls] = useState<Record<number, Pull[]>>({});
+  // 멈춤 판정 시각. 저장소가 있으면 PR 목록을 읽은 서버 시각(그 뒤 PR 활동은 모르므로), 없으면 'live'(asOf).
+  // ponytail: PR 목록은 화면을 열 때 한 번 읽으므로 멈춤 배지도 그때 기준. 실시간이 필요하면 웹훅.
+  const [pullsClock, setPullsClock] = useState<string | null>(null);
+  // 출처 이슈(2026-11-15): 업무별 GitHub 이슈는 PR 목록과 함께 받고, 지금 상태는 업무 상세를 열 때마다 읽는다.
+  const [linkedIssues, setLinkedIssues] = useState<Record<number, IssueLink[]>>({});
+  useEffect(() => {
+    if (givenPulls || !projectId) return;
+    let alive = true;
+    apiFetch('/api/github-prs?project=' + encodeURIComponent(projectId))
+      .then((r) => r.json().catch(() => null))
+      .then((body) => {
+        // 출처 이슈 연결은 PR을 못 읽은 오류 응답에도 들어 있다.
+        if (alive && body?.issues) setLinkedIssues(body.issues);
+        if (!alive || !body?.links) return;
+        setLoadedPulls(body.links);
+        setPullsClock(body.repo ? (body.asOf ?? null) : 'live');
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [projectId, givenPulls]);
+  const pulls = givenPulls ?? loadedPulls;
+  const [issueStatus, setIssueStatus] = useState<{ taskId: number; list?: IssueStatus[]; error: string } | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
+  // 상세를 닫거나 다른 업무를 열면 지난 이슈 상태를 버린다(다시 읽는 동안 지난 '닫힘'으로 안내하지 않게).
+  const [statusFor, setStatusFor] = useState(selected);
+  if (statusFor !== selected) {
+    setStatusFor(selected);
+    setIssueStatus(null);
+  }
+  const hasIssues = selected !== null && !!linkedIssues[selected]?.length;
+  useEffect(() => {
+    if (!hasIssues || selected === null || !projectId) return;
+    let alive = true;
+    const fail = (message?: string) =>
+      alive && setIssueStatus({ taskId: selected, error: message ?? '이슈 상태를 불러오지 못했어요.' });
+    apiFetch(`/api/github-prs?project=${encodeURIComponent(projectId)}&issuesOf=${selected}`)
+      .then(async (r) => {
+        const body = await r.json().catch(() => null);
+        if (!alive) return;
+        if (r.ok && Array.isArray(body?.issues)) setIssueStatus({ taskId: selected, list: body.issues, error: '' });
+        else fail(body?.error);
+      })
+      .catch(() => fail());
+    return () => {
+      alive = false;
+    };
+  }, [projectId, selected, hasIssues]);
+  // 개발 현황(2026-11-14): GitHub 호출 한도 때문에 업무 상세를 열 때 그 업무의 최근 PR 3개만 읽는다.
+  // CI는 바뀌므로 상세를 열 때마다 다시 읽는다.
+  const [details, setDetails] = useState<Record<number, PullDetail>>({});
+  const [detailError, setDetailError] = useState('');
+  const wantedPulls = (selected !== null ? (pulls[selected] ?? []) : [])
+    .slice(0, DETAIL_MAX_PULLS)
+    .map((p) => p.number)
+    .join(',');
+  useEffect(() => {
+    if (!wantedPulls || !projectId) return;
+    let alive = true;
+    // 다시 읽지 못하면 예전 CI 결과를 지운다(지난 '통과'로 완료를 제안하지 않게).
+    const fail = (message?: string) => {
+      setDetailError(message ?? 'CI·커밋 정보를 불러오지 못했어요.');
+      setDetails((d) => {
+        const next = { ...d };
+        for (const n of wantedPulls.split(',')) delete next[Number(n)];
+        return next;
+      });
+    };
+    apiFetch(
+      `/api/github-prs?project=${encodeURIComponent(projectId)}&pulls=${wantedPulls}`,
+    )
+      .then(async (r) => {
+        const body = await r.json().catch(() => null);
+        if (!alive) return;
+        if (r.ok && body?.details) {
+          setDetailError('');
+          setDetails((d) => ({ ...d, ...body.details }));
+          return;
+        }
+        fail(body?.error);
+      })
+      .catch(() => alive && fail());
+    return () => {
+      alive = false;
+    };
+  }, [projectId, selected, wantedPulls]);
+  const stallClock = givenPulls || !projectId || pullsClock === 'live' ? asOf : pullsClock;
+  const stalledOf = (t: Task) =>
+    sprint.finished || !stallClock ? null : stalledHours(t, pulls[t.id] ?? [], stallClock);
   const people = sprint.people ?? samplePeople;
   const tasks = sprint.tasks.filter((t) => !mine || t.person === me.person);
   const owner = me.role === 'owner';
@@ -120,12 +243,11 @@ export function TaskCollection({
           );
         }}
       >
-        {statuses
-          .map((s) => (
-            <NativeSelectOption key={s.id} value={s.id}>
-              {s.label}
-            </NativeSelectOption>
-          ))}
+        {statuses.map((s) => (
+          <NativeSelectOption key={s.id} value={s.id}>
+            {s.label}
+          </NativeSelectOption>
+        ))}
       </NativeSelect>
     );
   }
@@ -145,7 +267,7 @@ export function TaskCollection({
           <span className="collection-count">{tasks.length}개 업무</span>
           {owner && (
             <button
-              className="btn primary"
+              className="btn"
               disabled={busy || sprint.finished || !me.agreedAt}
               onClick={onAdd}
             >
@@ -184,7 +306,10 @@ export function TaskCollection({
               </TableHeader>
               <TableBody>
                 {tasks.map((t) => (
-                  <TableRow key={t.id} className={blocked(t) ? 'is-blocked' : undefined}>
+                  <TableRow
+                    key={t.id}
+                    className={blocked(t) ? 'is-blocked' : undefined}
+                  >
                     <TableCell>
                       <button
                         className="task-title-button"
@@ -193,13 +318,21 @@ export function TaskCollection({
                         <FileText size={16} />
                         <span>{t.title}</span>
                         {blocked(t) && <span className="race-tag">병목</span>}
+                        {stalledOf(t) !== null && (
+                          <span className="race-tag is-stalled">
+                            {`멈춤 ${stallText(stalledOf(t)!)}`}
+                          </span>
+                        )}
                       </button>
                       <span className="task-subline">
-                        업무
+                        {taskRef(t.id)}
+                        {pulls[t.id]?.length ? ` · PR ${pulls[t.id].length}개` : ''}
                         {t.dependsOn.length
                           ? ` · 선행 ${t.dependsOn.length}개`
                           : ''}
-                        {!t.done && t.dueAt && Date.parse(t.dueAt) < Date.parse(asOf)
+                        {!t.done &&
+                        t.dueAt &&
+                        Date.parse(t.dueAt) < Date.parse(asOf)
                           ? ' · 마감 지남'
                           : ''}
                       </span>
@@ -209,9 +342,7 @@ export function TaskCollection({
                       <NativeSelect
                         aria-label={`${t.title} 담당자`}
                         value={t.person}
-                        disabled={
-                          !owner || !writable(t) || t.done
-                        }
+                        disabled={!owner || !writable(t) || t.done}
                         onChange={(e) =>
                           void mutate(
                             'editTask',
@@ -259,11 +390,7 @@ export function TaskCollection({
                       </span>
                     </TableCell>
                     <TableCell>
-                      <span
-                        className={
-                          blocked(t) ? 'schedule-warning' : ''
-                        }
-                      >
+                      <span className={blocked(t) ? 'schedule-warning' : ''}>
                         {t.done
                           ? '결과 확인 완료'
                           : plan.finishes[t.id]
@@ -281,59 +408,125 @@ export function TaskCollection({
         </TabsContent>
         <TabsContent value="board">
           <div className="task-board">
-            {statuses
-              .filter(
-                () => true,
-              )
-              .map((s) => (
-                <section
-                  className="board-column"
-                  key={s.id}
-                  aria-label={s.label}
-                >
-                  <h2>
-                    <span className={`status-dot status-${s.id}`} />
-                    {s.label}
-                    <span>
-                      {tasks.filter((t) => statusOf(t) === s.id).length}
-                    </span>
-                  </h2>
-                  {tasks
-                    .filter((t) => statusOf(t) === s.id)
-                    .map((t) => (
-                      <article
-                        className={'board-card' + (blocked(t) ? ' is-blocked' : '')}
-                        key={t.id}
+            {statuses.map((s) => (
+              <section
+                className={`board-column status-${s.id}`}
+                key={s.id}
+                aria-label={s.label}
+              >
+                <h2>
+                  <span className={`status-dot status-${s.id}`} />
+                  {s.label}
+                  <span>
+                    {tasks.filter((t) => statusOf(t) === s.id).length}
+                  </span>
+                </h2>
+                {tasks
+                  .filter((t) => statusOf(t) === s.id)
+                  .map((t) => (
+                    <article
+                      className={
+                        'board-card' + (blocked(t) ? ' is-blocked' : '')
+                      }
+                      key={t.id}
+                    >
+                      <button
+                        className="task-title-button"
+                        onClick={() => setSelected(t.id)}
                       >
+                        {t.title}
+                        {blocked(t) && <span className="race-tag">병목</span>}
+                        {stalledOf(t) !== null && (
+                          <span className="race-tag is-stalled">
+                            {`멈춤 ${stallText(stalledOf(t)!)}`}
+                          </span>
+                        )}
+                      </button>
+                      <div className="board-card-meta">
+                        <span className="board-avatar" aria-hidden="true">
+                          {(people[t.person]?.name ?? '?').slice(0, 1)}
+                        </span>
+                        {people[t.person]?.name ?? '미배정'}
+                        {!!t.dependsOn.length && (
+                          <span className="board-card-dep">
+                            <Link2 size={12} />
+                            선행 {t.dependsOn.length}
+                          </span>
+                        )}
+                        <span className="board-card-ref">{taskRef(t.id)}</span>
+                      </div>
+                      {!!pulls[t.id]?.length && (
+                        <p className="board-card-pr">
+                          <GitPullRequest size={12} />
+                          {pulls[t.id].slice(0, 2).map((p) => (
+                            <span key={p.number} className={`pr-state pr-${p.state}`}>
+                              #{p.number} {PR_LABEL[p.state]}
+                              {details[p.number] && (
+                                <span
+                                  className={`pr-check-dot pr-check-${details[p.number].checks}`}
+                                  title={CHECK_LABEL[details[p.number].checks]}
+                                  aria-label={CHECK_LABEL[details[p.number].checks]}
+                                >
+                                  <CheckIcon checks={details[p.number].checks} />
+                                </span>
+                              )}
+                            </span>
+                          ))}
+                          {pulls[t.id].length > 2 && <span>+{pulls[t.id].length - 2}</span>}
+                        </p>
+                      )}
+                      {/* 상세에서 CI를 확인한 뒤 근거를 채운다. 보드는 열어볼 업무만 알린다(CI 실패를 이미 알면 숨김). */}
+                      {writable(t) &&
+                        !t.done &&
+                        prSuggestion(
+                          t,
+                          pulls[t.id] ?? [],
+                          Object.fromEntries(Object.values(details).map((d) => [d.number, d.checks])),
+                        ) === 'complete' && (
+                          <p className="board-card-suggest">
+                            <GitMerge size={12} aria-hidden="true" />
+                            완료 제안
+                          </p>
+                        )}
+                      {!t.done && (
+                        <p
+                          className={
+                            'board-card-due' +
+                            (blocked(t) ||
+                            (t.dueAt && Date.parse(t.dueAt) < Date.parse(asOf))
+                              ? ' schedule-warning'
+                              : '')
+                          }
+                        >
+                          <CalendarClock size={13} />
+                          {t.dueAt
+                            ? `마감 ${seoulTime(t.dueAt).slice(5)}` +
+                              (Date.parse(t.dueAt) < Date.parse(asOf)
+                                ? ' · 지남'
+                                : '')
+                            : plan.finishes[t.id]
+                              ? `예상 완료 ${seoulTime(plan.finishes[t.id]).slice(5)}`
+                              : '마감 안에 배치 불가'}
+                        </p>
+                      )}
+                      <div className="board-card-bottom">
+                        {statusControl(t)}
                         <button
-                          className="task-title-button"
+                          className="hours-button"
+                          aria-label={`${t.title} 남은 시간 편집`}
                           onClick={() => setSelected(t.id)}
                         >
-                          {t.title}
-                          {blocked(t) && <span className="race-tag">병목</span>}
+                          <Clock3 size={13} />
+                          {t.remaining}h
                         </button>
-                        <p>
-                          {people[t.person]?.name ?? '미배정'} ·{' '}
-                          업무
-                        </p>
-                        <div className="board-card-bottom">
-                          {statusControl(t)}
-                          <button
-                            className="hours-button"
-                            aria-label={`${t.title} 남은 시간 편집`}
-                            onClick={() => setSelected(t.id)}
-                          >
-                            <Clock3 size={13} />
-                            {t.remaining}h
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  {!tasks.some((t) => statusOf(t) === s.id) && (
-                    <p className="board-empty">업무 없음</p>
-                  )}
-                </section>
-              ))}
+                      </div>
+                    </article>
+                  ))}
+                {!tasks.some((t) => statusOf(t) === s.id) && (
+                  <p className="board-empty">업무 없음</p>
+                )}
+              </section>
+            ))}
           </div>
         </TabsContent>
       </Tabs>
@@ -349,6 +542,13 @@ export function TaskCollection({
           busy={busy}
           error={error}
           mutate={mutate}
+          pulls={pulls[task.id] ?? []}
+          details={details}
+          detailError={detailError}
+          issues={linkedIssues[task.id] ?? []}
+          issueStatus={issueStatus?.taskId === task.id ? issueStatus.list : undefined}
+          issueError={issueStatus?.taskId === task.id ? issueStatus.error : ''}
+          stalled={stalledOf(task)}
           onClose={() => setSelected(null)}
           onEdit={() => {
             setSelected(null);
@@ -359,6 +559,28 @@ export function TaskCollection({
     </div>
   );
 }
+/** 업무 상세의 체크인 이력. 오늘의 랩 기록에서 이 업무에 남긴 막힌 점도 함께 보인다. */
+export function CheckinHistory({ checkins, taskId }: { checkins: Checkin[]; taskId: number }) {
+  const mine = checkins.filter((c) => c.task_id === taskId);
+  if (!mine.length) return <p className="muted">최근 기록에 이 업무의 체크인이 없습니다.</p>;
+  return (
+    <>
+      {mine.map((c) => (
+        <article className="detail-checkin" key={c.id}>
+          <p>{c.note}</p>
+          {c.blocker && <p className="detail-blocker">{`막힌 점 · ${c.blocker}`}</p>}
+          <small>
+            남은 {c.remaining}h ·{' '}
+            {new Date(c.created_at).toLocaleString('ko-KR', {
+              timeZone: 'Asia/Seoul',
+            })}
+          </small>
+        </article>
+      ))}
+    </>
+  );
+}
+
 function TaskDetail({
   task,
   sprint,
@@ -369,6 +591,13 @@ function TaskDetail({
   busy,
   error,
   mutate,
+  pulls,
+  details,
+  detailError,
+  issues,
+  issueStatus,
+  issueError,
+  stalled,
   onClose,
   onEdit,
 }: {
@@ -381,10 +610,19 @@ function TaskDetail({
   busy: boolean;
   error: string;
   mutate: Mutate;
+  pulls: Pull[];
+  details: Record<number, PullDetail>;
+  detailError: string;
+  issues: IssueLink[];
+  issueStatus?: IssueStatus[];
+  issueError: string;
+  stalled: number | null;
   onClose: () => void;
   onEdit: () => void;
 }) {
   const [base] = useState({ task, revision: sprint.revision });
+  // 머지된 PR을 근거로 쓰기로 하면 완료 근거 칸을 채운다. 저장은 사람이 누른다.
+  const [evidence, setEvidence] = useState('');
   const t = base.task;
   const people = sprint.people ?? samplePeople;
   const canEdit =
@@ -434,9 +672,7 @@ function TaskDetail({
     >
       <SheetContent className="task-detail-sheet">
         <SheetHeader>
-          <p className="work-kicker">
-            업무
-          </p>
+          <p className="work-kicker">업무</p>
           <SheetTitle>{task.title}</SheetTitle>
           <SheetDescription>
             설명과 진행 상황, 결과물을 함께 확인합니다.
@@ -539,6 +775,31 @@ function TaskDetail({
               <p>{task.description || '아직 업무 설명이 없습니다.'}</p>
             </section>
           )}
+          <PrPanel
+            task={task}
+            pulls={pulls}
+            details={details}
+            detailError={detailError}
+            issues={issues}
+            issueStatus={issueStatus}
+            issueError={issueError}
+            stalled={stalled}
+            asOf={asOf}
+            canEdit={canEdit && !busy}
+            onStart={() =>
+              void mutate(
+                'taskDetails',
+                {
+                  taskId: task.id,
+                  status: 'in_progress',
+                  description: task.description ?? '',
+                  remaining: task.remaining,
+                },
+                '열린 PR이 있어 진행 중으로 바꿨습니다.',
+              ).then((ok) => ok && onClose())
+            }
+            onUseEvidence={(text) => setEvidence(text)}
+          />
           <section className="detail-section">
             <h3>선행 작업</h3>
             {task.dependsOn.length ? (
@@ -559,22 +820,7 @@ function TaskDetail({
           </section>
           <section className="detail-section">
             <h3>체크인</h3>
-            {checkins
-              .filter((c) => c.task_id === task.id)
-              .map((c) => (
-                <article className="detail-checkin" key={c.id}>
-                  <p>{c.note}</p>
-                  <small>
-                    남은 {c.remaining}h ·{' '}
-                    {new Date(c.created_at).toLocaleString('ko-KR', {
-                      timeZone: 'Asia/Seoul',
-                    })}
-                  </small>
-                </article>
-              ))}
-            {!checkins.some((c) => c.task_id === task.id) && (
-              <p className="muted">최근 기록에 이 업무의 체크인이 없습니다.</p>
-            )}
+            <CheckinHistory checkins={checkins} taskId={task.id} />
             <p className="detail-caption">
               프로젝트의 최근 체크인 20건에서 표시합니다.
             </p>
@@ -636,6 +882,8 @@ function TaskDetail({
                         minLength={5}
                         maxLength={2000}
                         rows={3}
+                        value={evidence}
+                        onChange={(e) => setEvidence(e.target.value)}
                       />
                     </label>
                   )}

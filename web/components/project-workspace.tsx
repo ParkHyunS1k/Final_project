@@ -1,6 +1,7 @@
 'use client';
 /* eslint-disable next/no-html-link-for-pages -- Project switching clears invitation and dashboard state via full navigation. */
-import { useEffect, useState, type ReactNode } from 'react';
+import type { RestrictionView } from '@/lib/score';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   SidebarProvider,
@@ -28,6 +29,7 @@ import { workspaceEntry } from '@/lib/workspace-entry';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { TeamDirectory } from '@/components/team-directory';
 import { ProjectCreate } from '@/components/project-create';
+import { PeerReviewGate } from '@/components/peer-review';
 export const workspaceViews = [
   { id: 'home' as View, label: '홈', icon: Gauge },
   { id: 'tasks' as View, label: '업무', icon: ListTodo },
@@ -38,6 +40,16 @@ export type WorkspaceNav = {
   setView: (view: View) => void;
   mine: boolean;
   setMine: (mine: boolean) => void;
+  /** 동료평가 미제출 금지. 처음 불러올 때의 값이며 서버가 다시 확인한다. */
+  restriction: RestrictionView | null;
+  /** 아직 낼 동료평가가 있는 프로젝트. 있으면 PeerReviewGate 모달이 작업 공간을 막는다. */
+  reviewPending: string[];
+  /** 서버에서 낼 평가 목록을 다시 받는다(이 화면에서 프로젝트가 끝난 경우). */
+  refreshReviews: () => void;
+  /** 통합 앱에서만: 상단 바 프로젝트 이름 옆에 둘 프로젝트 선택·역할 추천(홈 시안 v9). */
+  picker?: ReactNode;
+  /** 통합 앱에서만: 상단 바 아래에 둘 진행 현황·업무·프로젝트 전환. */
+  tabs?: ReactNode;
 };
 function WorkspaceMenu({
   view,
@@ -155,6 +167,8 @@ export type ProjectMeta = {
     agreed_goal_version: number;
     left_at: string | null;
     left_note: string;
+    // 연결된 GitHub 아이디. 연결 안 했거나 내가 나간 프로젝트면 null.
+    github_login: string | null;
   }[];
   invites: {
     id: string;
@@ -191,6 +205,8 @@ async function api(path: string, body?: Record<string, unknown>) {
   const data = (await res.json()) as {
     error?: string;
     projects: { id: string; title: string; role: string; lifecycle: string }[];
+    restriction: RestrictionView | null;
+    reviewPending: string[];
     projectId: string;
     token?: string;
     email?: 'sent' | 'failed' | 'off';
@@ -210,9 +226,12 @@ async function api(path: string, body?: Record<string, unknown>) {
 export function ProjectWorkspace({
   children,
   embedded = false,
+  onSelect,
 }: {
   children: (id: string, nav: WorkspaceNav) => ReactNode;
   embedded?: boolean;
+  /** 주소에 프로젝트가 없을 때 스스로 고른 프로젝트를 통합 앱에 알린다(홈의 팀 모집 카드용). */
+  onSelect?: (id: string) => void;
 }) {
   const [projects, setProjects] = useState<
     { id: string; title: string; role: string; lifecycle: string }[]
@@ -226,6 +245,32 @@ export function ProjectWorkspace({
   const [browsing, setBrowsing] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [restriction, setRestriction] = useState<RestrictionView | null>(null);
+  const [reviewPending, setReviewPending] = useState<string[]>([]);
+  // 낼 평가 목록은 서버가 정한다. 처음 불러올 때, 30초마다, 창으로 돌아올 때, 홈 카드가 알릴 때 다시 받는다.
+  // 업무·팀 찾기 화면을 보는 중에 프로젝트가 끝나도 모달이 뜬다.
+  const refreshReviews = useCallback(() => {
+    api('/api/projects')
+      .then((data) => {
+        setProjects(data.projects);
+        setRestriction(data.restriction);
+        setReviewPending(data.reviewPending);
+        // 통합 앱의 PendingReviewGate도 곧바로 다시 받게 한다.
+        dispatchEvent(new Event('pm:reviews'));
+      })
+      .catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    const id = setInterval(refreshReviews, 30000);
+    window.addEventListener('focus', refreshReviews);
+    window.addEventListener('pm:reviewed', refreshReviews);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', refreshReviews);
+      window.removeEventListener('pm:reviewed', refreshReviews);
+    };
+  }, [refreshReviews]);
+  const reviewed = useCallback((id: string) => setReviewPending((p) => p.filter((x) => x !== id)), []);
   const [invite, setInvite] = useState('');
   const [preview, setPreview] = useState<{ details: InvitePreview } | null>(
     null,
@@ -241,12 +286,15 @@ export function ProjectWorkspace({
         const start = viewFrom(params.get('view'));
         setView(start.view);
         setMine(start.mine);
-        const entry = workspaceEntry(location.search, data.projects);
+        const entry = workspaceEntry(location.search, data.projects, data.reviewPending);
+        setRestriction(data.restriction);
+        setReviewPending(data.reviewPending);
         setInvite(entry.invite);
-        setCreating(!embedded && entry.creating);
-        setBrowsing(!entry.invite && params.get('teams') === '1');
+        // 통합 앱(embedded)에서는 팀 찾기가 따로 있다.
+        setBrowsing(!embedded && entry.browsing);
         setProjects(data.projects);
         setSelected(entry.selected);
+        onSelect?.(entry.selected);
         if (token)
           setPreview(
             await api('/api/projects?invite=' + encodeURIComponent(token)),
@@ -257,7 +305,53 @@ export function ProjectWorkspace({
         setError(e.message);
       })
       .finally(() => setLoaded(true));
-  }, [embedded]);
+    // onSelect는 통합 앱의 state setter라 바뀌지 않는다.
+  }, [embedded, onSelect]);
+  // 통합 앱(embedded) 상단 바에 들어갈 조각. 맨 위 프로젝트 줄은 없앴다(홈 시안 v9, 2026-11-09).
+  const picker = embedded && (
+    <div className="race-picker">
+      <select
+        aria-label="프로젝트 선택"
+        value={selected}
+        onChange={(e) =>
+          location.assign(
+            e.target.value === '__new'
+              ? '/app?tab=templates'
+              : '/app?tab=work&project=' + encodeURIComponent(e.target.value),
+          )
+        }
+      >
+        <option value="" disabled>
+          프로젝트 선택
+        </option>
+        {projects.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.title}
+          </option>
+        ))}
+        <option value="__new">+ 새 프로젝트</option>
+      </select>
+      {selected && (
+        <a href={'/app?tab=team&project=' + encodeURIComponent(selected)}>
+          역할 추천
+        </a>
+      )}
+    </div>
+  );
+  const tabs = embedded && (
+    <nav className="race-views" aria-label="프로젝트 화면">
+      {workspaceViews.map((item) => (
+        <button
+          key={item.id}
+          className={'race-view' + (view === item.id ? ' on' : '')}
+          aria-current={view === item.id ? 'page' : undefined}
+          onClick={() => setView(item.id)}
+        >
+          {item.id === 'home' ? '진행 현황' : item.label}
+        </button>
+      ))}
+    </nav>
+  );
   return (
     <SidebarProvider
       className={'workspace-shell' + (embedded ? ' hub-workspace' : '')}
@@ -328,66 +422,25 @@ export function ProjectWorkspace({
         </Sidebar>
       )}
       <Body className="workspace-body">
-        {embedded && (
-          <div className="hub-work-toolbar">
-            <label>
-              프로젝트{' '}
-              <select
-                aria-label="프로젝트 선택"
-                value={selected}
-                onChange={(e) =>
-                  location.assign(
-                    '/app?tab=work&project=' +
-                      encodeURIComponent(e.target.value),
-                  )
-                }
-              >
-                <option value="" disabled>
-                  프로젝트 선택
-                </option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <a className="btn" href="/app?tab=templates">
-              새 프로젝트
-            </a>
-            {selected && (
-              <a
-                className="btn"
-                href={'/app?tab=team&project=' + encodeURIComponent(selected)}
-              >
-                역할 추천
-              </a>
-            )}
-            {selected && (
-              <nav aria-label="프로젝트 화면">
-                {workspaceViews.map((item) => (
-                  <button
-                    key={item.id}
-                    className={'btn ' + (view === item.id ? 'primary' : '')}
-                    onClick={() => setView(item.id)}
-                  >
-                    {item.id === 'home' ? '진행 현황' : item.label}
-                  </button>
-                ))}
-              </nav>
-            )}
-          </div>
+        {embedded && !selected && projects.length > 0 && (
+          <div className="hub-work-toolbar">{picker}</div>
         )}
         {!(selected && !creating && !invite && !browsing) && (
           <header className="workspace-bar">
             <SidebarTrigger aria-label="사이드바 열기 또는 닫기" />
-            <b>
-              {creating
-                ? '새 프로젝트'
-                : browsing && !invite
-                  ? '팀 찾기'
-                  : '프로젝트'}
-            </b>
+            <b>{creating ? '새 프로젝트' : browsing && !invite ? '팀 찾기' : '프로젝트'}</b>
+            {browsing && !creating && !invite && (
+              <button
+                className="btn"
+                style={{ marginLeft: 'auto' }}
+                onClick={() => {
+                  setCreating(true);
+                  setBrowsing(false);
+                }}
+              >
+                + 새 프로젝트
+              </button>
+            )}
           </header>
         )}
         {error && (
@@ -407,6 +460,7 @@ export function ProjectWorkspace({
         )}
         {creating && (
           <ProjectCreate
+            restriction={restriction}
             onSubmit={async (body) => {
               setError('');
               try {
@@ -498,9 +552,9 @@ export function ProjectWorkspace({
             </a>
           </section>
         ) : browsing && !creating ? (
-          <TeamDirectory />
+          <TeamDirectory restriction={restriction} />
         ) : selected && !creating ? (
-          children(selected, { view, setView, mine, setMine })
+          children(selected, { view, setView, mine, setMine, restriction, reviewPending, refreshReviews, picker: picker || undefined, tabs: tabs || undefined })
         ) : loaded && !creating ? (
           <section className="project-panel">
             <h1>첫 프로젝트를 골라보세요.</h1>
@@ -523,6 +577,16 @@ export function ProjectWorkspace({
           </section>
         ) : null}
       </Body>
+      {/* 통합 앱(embedded)에서는 UnifiedApp이 같은 모달을 띄운다. */}
+      {!embedded && reviewPending.length > 0 && (
+        <PeerReviewGate
+          projects={reviewPending.map((id) => ({
+            id,
+            title: projects.find((p) => p.id === id)?.title ?? '',
+          }))}
+          onDone={reviewed}
+        />
+      )}
     </SidebarProvider>
   );
 }
@@ -553,7 +617,7 @@ export function ProjectDetails({
         <p>
           프로젝트 생성이 완료됐습니다. 업무 메뉴에서 업무와 담당자를
           {state.me.role === 'owner'
-            ? ' 등록하고, 아래 팀원 구역에서 팀원을 초대해주세요.'
+            ? ' 등록하고, 팀원 구역에서 팀원을 초대해주세요.'
             : ' 확인해주세요.'}
         </p>
       )}
@@ -652,7 +716,7 @@ export function TeamInvites({
             maxLength={254}
           />
         </label>
-        <button className="btn primary" disabled={busy || !writable}>
+        <button className="btn" disabled={busy || !writable}>
           초대 링크 만들기
         </button>
       </form>
