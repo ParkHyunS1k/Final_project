@@ -307,3 +307,31 @@ test('리뷰: 이상한 주소(%)는 오류 없이 404, cron은 Bearer 형식만
   const plain = await api.cronGET(new Request('https://test.local/api/internal/profile-scores', { headers: { authorization: 'test-cron' } }));
   assert.equal(plain.status, 401);
 });
+
+test('일괄 계산 v2: 완주·평가·쉰 기간이 저장 점수에 반영된다', async () => {
+  const projectId = await gradedTeam('v2lead', ['v2mate1', 'v2mate2'], 'v2 점수 팀');
+  const score = async () => one("SELECT score::float AS score, grade, formula_version FROM profile_scores WHERE user_id='v2lead'");
+  assert.equal((await cron()).status, 200);
+  // 평가 4.5 → (4.5+3.5)/2*0.7 + 완주율 100%*1.5 + 0.05 = 4.35
+  assert.deepEqual(await score(), { score: 4.4, grade: 'A', formula_version: 'v2' });
+  // 400일 전에 끝난 것으로 옮기면 휴식 감점 최대 1.0.
+  await run("UPDATE project_policy SET completed_at=now() - interval '400 days' WHERE project_id=?", projectId);
+  assert.equal((await cron()).status, 200);
+  assert.deepEqual(await score(), { score: 3.4, grade: 'B', formula_version: 'v2' });
+  // 새 프로젝트를 시작하면 감점이 사라진다.
+  const next = await call(api.projectsPOST, 'v2lead', '/api/projects', {
+    action: 'create', title: '다시 시작', goal: '진행한다', scope: '범위', completionCriteria: '기준', duration: 7, agreed: true,
+  }, 201);
+  await act('v2lead', next.projectId, 'start');
+  assert.equal((await cron()).status, 200);
+  assert.equal((await score()).score, 4.4);
+});
+
+test('리뷰: 완주 시각이 비어 있는 예전 완주는 마감 시각을 종료로 쓴다', async () => {
+  const projectId = await gradedTeam('oldlead', ['oldmate1', 'oldmate2'], '예전 완주 팀');
+  await run("UPDATE project_policy SET completed_at=NULL, deadline_at=now() - interval '1 day' WHERE project_id=?", projectId);
+  assert.equal((await cron()).status, 200);
+  const row = await one("SELECT score::float AS score FROM profile_scores WHERE user_id='oldlead'");
+  // 완주 시각이 없으면 평가 기간이 열리지 않아 평가 점수는 없다(기존 규칙): 상한 3.9, 휴식 감점 없음(전에는 2.9).
+  assert.equal(row.score, 3.9);
+});

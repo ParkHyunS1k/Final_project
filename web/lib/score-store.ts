@@ -145,8 +145,13 @@ export async function readMyScore(user: Identity, now = new Date()) {
 }
 
 /** 한 사용자의 확정 점수·최고 등급·뱃지·프로젝트 기록. 일괄 계산과 공개 프로필도 쓴다. */
+function endOf(p: { left_at: Date | null; lifecycle: string; completed_at: Date | null; deadline_at: Date | null }) {
+  // 완주 시각이 비어 있는 예전 완주는 마감 시각으로 대신한다.
+  const at = p.left_at ?? (p.lifecycle === 'completed' ? (p.completed_at ?? p.deadline_at) : p.lifecycle === 'expired' ? p.deadline_at : null);
+  return at ? new Date(at) : null;
+}
 export async function scoreSummary(userId: string, now = new Date()) {
-  const projects = await projectRows(userId);
+  const projects = await projectRows(userId, now);
   const scores: Awaited<ReturnType<typeof projectScore>>[] = [];
   for (const p of projects) scores.push(await projectScore(String(p.id), userId, now));
   const me = summarize(scores);
@@ -164,8 +169,11 @@ export async function scoreSummary(userId: string, now = new Date()) {
       lifecycle: p.lifecycle,
       startedAt: iso(p.started_at ? new Date(p.started_at) : null),
       deadlineAt: iso(p.deadline_at ? new Date(p.deadline_at) : null),
+      // 프로필 휴식 감점용 종료 시각: 나간 시각, 완주 시각, 마감 시각 순.
+      endedAt: iso(endOf(p)),
       score: scores[i].score,
       grade: scores[i].grade,
+      hidden: scores[i].review.hidden,
     })),
   };
 }
