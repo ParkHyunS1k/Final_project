@@ -11,13 +11,15 @@ export type ProfileProject = {
   lifecycle: string;
   startedAt: string | null;
   endedAt: string | null;
-  /** 평가를 내지 않아 결과가 가려졌다. 완주로 세지 않는다(내지 않는 편이 이득이 되지 않게). */
+  /** 평가를 내지 않아 결과가 가려졌다. 평가 최저점으로 넣고 완주로 세지 않는다(내지 않는 편이 이득이 되지 않게). */
   hidden?: boolean;
 };
 
 const DAY_MS = 86400000;
 /** 평가 보정: 평균 앞에 이 점수짜리 프로젝트 하나가 더 있다고 본다. 평가가 없으면 이 점수. */
 const PEER_PRIOR = 3.5;
+/** 미제출로 가려진 프로젝트의 평가 자리. 평가 입력 최저점(0.5)이라 제출한 쪽보다 높을 수 없다. */
+const HIDDEN_SCORE = 0.5;
 const PEER_WEIGHT = 0.7;
 /** 완주 1개당 가산점과 상한(10개). */
 const FINISH_BONUS = 0.05;
@@ -34,16 +36,20 @@ const IDLE_MAX = 1.0;
  * 끝난 프로젝트(완주·기한 종료·시작 뒤 참여 중단)가 없으면 null.
  */
 export function profileScore(projects: ProfileProject[], now: Date): number | null {
+  // 참여 중단은 시작 뒤에 나간 것만 센다(시작 전에 나가고 팀이 나중에 시작한 경우 제외).
   const finished = projects.filter((p) =>
-    p.left ? Boolean(p.startedAt) : p.lifecycle === 'completed' || p.lifecycle === 'expired',
+    p.left
+      ? Boolean(p.startedAt && p.endedAt && Date.parse(p.endedAt) > Date.parse(p.startedAt))
+      : p.lifecycle === 'completed' || p.lifecycle === 'expired',
   );
   if (!finished.length) return null;
   const completed = finished.filter((p) => !p.left && !p.hidden && p.lifecycle === 'completed').length;
-  const scores = projects.map((p) => p.score).filter((s): s is number => s !== null);
-  const peer = (scores.reduce((a, b) => a + b, PEER_PRIOR)) / (scores.length + 1);
+  const real = projects.map((p) => p.score).filter((s): s is number => s !== null);
+  const scores = [...real, ...finished.filter((p) => p.hidden).map(() => HIDDEN_SCORE)];
+  const peer = scores.reduce((a, b) => a + b, PEER_PRIOR) / (scores.length + 1);
   let total =
     peer * PEER_WEIGHT + (completed / finished.length) * 5 * (1 - PEER_WEIGHT) + Math.min(completed * FINISH_BONUS, BONUS_MAX);
-  if (!scores.length) total = Math.min(total, NO_PEER_MAX);
+  if (!real.length) total = Math.min(total, NO_PEER_MAX);
   if (!projects.some((p) => !p.left && p.lifecycle === 'active')) {
     const lastEnd = Math.max(...finished.map((p) => (p.endedAt ? Date.parse(p.endedAt) : 0)));
     const idleDays = (now.getTime() - lastEnd) / DAY_MS;

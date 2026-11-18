@@ -628,12 +628,12 @@ test('내지 않은 사람은 결과가 가려지고 팀 뱃지는 보인다', a
   const summary = await me('y3c');
   assert.equal(summary.projects, 0);
   assert.equal(summary.bestGrade, 'E');
-  // 프로필 점수도 가려진 결과를 넣지 않고, 가려진 프로젝트는 완주로 세지 않는다(v2).
+  // 프로필 점수: 가려진 프로젝트는 평가 최저점(0.5)으로 넣고 완주로 세지 않는다(v2).
   const cronRun = await api.cronGET(
     new Request('https://test.local/api/internal/profile-scores', { headers: { authorization: 'Bearer test-cron' } }),
   );
   assert.equal(cronRun.status, 200);
-  assert.equal((await me('y3c')).profile.score, 2.5); // 3.5*0.7, 완주 0
+  assert.equal((await me('y3c')).profile.score, 1.4); // 평가 최저점 0.5로: (0.5+3.5)/2*0.7, 완주 0
   assert.equal((await me('y3a')).profile.score, 4.5); // (5+3.5)/2*0.7 + 1.5 + 0.05
 });
 

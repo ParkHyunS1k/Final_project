@@ -73,9 +73,18 @@ void test('상위 %: 1등은 1%, 동률은 같은 순위로, 꼴찌', () => {
   assert.equal(topPercent(100, 100), 99);
 });
 
-void test('v2 평가 미제출로 결과가 가려진 프로젝트는 완주로 세지 않는다(내지 않는 쪽이 늘 불리)', () => {
-  const hidden: ProfileProject = { ...done(null), hidden: true };
-  assert.equal(profileScore([hidden], NOW), 2.5); // 3.5*0.7 + 0 + 0 = 2.45
-  // 최저 평가(1.0)를 받고 낸 사람보다 낮다.
-  assert.ok(profileScore([hidden], NOW)! < profileScore([done(1)], NOW)!);
+void test('리뷰: 미제출로 가려진 프로젝트는 평가 최저점(0.5)으로 넣어, 내는 쪽이 언제나 같거나 유리하다', () => {
+  const hiddenExpired: ProfileProject = { ...expired(null), hidden: true };
+  // 기한 종료 + 1점: 제출 1.6, 미제출은 그보다 낮아야 한다.
+  assert.ok(profileScore([hiddenExpired], NOW)! <= profileScore([expired(1)], NOW)!);
+  // 5점 완주 4개 + 새 완주 1점.
+  const four = Array.from({ length: 4 }, () => done(5));
+  assert.ok(profileScore([...four, { ...done(null), hidden: true }], NOW)! <= profileScore([...four, done(1)], NOW)!);
+  // (0.5+3.5)/2*0.7 = 1.4, 완주 0.
+  assert.equal(profileScore([{ ...done(null), hidden: true }], NOW), 1.4);
+});
+
+void test('리뷰: 시작 전에 나갔으면 팀이 나중에 시작해도 세지 않는다', () => {
+  const leftThenStarted: ProfileProject = { score: null, left: true, lifecycle: 'active', startedAt: daysAgo(3), endedAt: daysAgo(4) };
+  assert.equal(profileScore([leftThenStarted], NOW), null);
 });

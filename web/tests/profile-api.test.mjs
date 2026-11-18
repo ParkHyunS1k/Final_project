@@ -326,3 +326,12 @@ test('일괄 계산 v2: 완주·평가·쉰 기간이 저장 점수에 반영된
   assert.equal((await cron()).status, 200);
   assert.equal((await score()).score, 4.4);
 });
+
+test('리뷰: 완주 시각이 비어 있는 예전 완주는 마감 시각을 종료로 쓴다', async () => {
+  const projectId = await gradedTeam('oldlead', ['oldmate1', 'oldmate2'], '예전 완주 팀');
+  await run("UPDATE project_policy SET completed_at=NULL, deadline_at=now() - interval '1 day' WHERE project_id=?", projectId);
+  assert.equal((await cron()).status, 200);
+  const row = await one("SELECT score::float AS score FROM profile_scores WHERE user_id='oldlead'");
+  // 완주 시각이 없으면 평가 기간이 열리지 않아 평가 점수는 없다(기존 규칙): 상한 3.9, 휴식 감점 없음(전에는 2.9).
+  assert.equal(row.score, 3.9);
+});
