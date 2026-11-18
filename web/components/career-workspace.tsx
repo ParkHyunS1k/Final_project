@@ -19,6 +19,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
+import { CareerIntroduction } from './career-introduction';
+import { CareerTechnologies } from './career-technologies';
 import { CareerAnalysisReview } from './career-analysis-review';
 import { apiFetch, signInWithGoogle } from '@/lib/supabase-browser';
 import {
@@ -449,328 +451,367 @@ export function CareerWorkspace({
           </output>
         )}
         {data && section === 'profile' && (
-          <div className="cf-columns">
-            <section className="cf-card">
-              <div className="cf-card-heading">
-                <div>
-                  <p className="eyebrow">01 · PROFILE</p>
-                  <h2>경험과 목표를 알려주세요</h2>
+          <>
+            <div className="cf-columns">
+              <section className="cf-card">
+                <div className="cf-card-heading">
+                  <div>
+                    <p className="eyebrow">01 · PROFILE</p>
+                    <h2>경험과 목표를 알려주세요</h2>
+                  </div>
+                  {profile && (
+                    <span className="cf-chip">프로필 v{profile.version}</span>
+                  )}
                 </div>
-                {profile && (
-                  <span className="cf-chip">프로필 v{profile.version}</span>
-                )}
-              </div>
-              <form onSubmit={saveProfile} className="cf-form">
-                <fieldset disabled={busy}>
-                  <label>
-                    이력서 이름
-                    <input
-                      value={form.resumeName}
-                      maxLength={80}
-                      required
-                      onChange={(e) => update('resumeName', e.target.value)}
-                    />
-                  </label>
-                  <label className="cf-upload">
-                    <Upload size={20} />
-                    <span>
-                      PDF·텍스트 파일 불러오기
-                      <small>5MB 이하 · PDF 원본은 브라우저에서만 읽어요</small>
-                    </span>
-                    <input
-                      type="file"
-                      accept=".pdf,.txt,application/pdf,text/plain"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        void act(async () => {
-                          const { resumeFileText } =
-                            await import('@/lib/career/pdf');
-                          const text = await resumeFileText(file);
-                          update('resumeText', text);
-                          setNotice(
-                            '내용을 불러왔습니다. 추출 내용과 개인정보를 확인한 뒤 저장해주세요.',
-                          );
-                        });
-                        e.target.value = '';
-                      }}
-                    />
-                  </label>
-                  <label>
-                    이력서·포트폴리오 내용
-                    <textarea
-                      rows={10}
-                      minLength={30}
-                      maxLength={40000}
-                      required
-                      value={form.resumeText}
-                      placeholder="직접 했던 프로젝트, 맡은 업무, 사용한 기술과 결과를 적어주세요."
-                      onChange={(e) => update('resumeText', e.target.value)}
-                    />
-                  </label>
-                  <p className="cf-help">
-                    원문과 분석은 내 계정에 저장됩니다. 팀에는 선택해서 공유한
-                    역량만 전달됩니다.
-                  </p>
-                  <label>
-                    목표 직무
-                    <select
-                      value={form.targetRole}
-                      onChange={(e) => update('targetRole', e.target.value)}
-                    >
-                      <option value="">아직 탐색 중</option>
-                      {TARGETS.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    비교할 채용공고 <span className="muted">선택</span>
-                    <textarea
-                      rows={4}
-                      maxLength={20000}
-                      value={form.targetPosting}
-                      onChange={(e) => update('targetPosting', e.target.value)}
-                      placeholder="관심 공고의 자격요건·우대사항을 붙여넣어 주세요. 없으면 직무별 학습 참고 기준과 비교합니다."
-                    />
-                  </label>
-                  <fieldset>
-                    <legend>프로젝트에서 쌓고 싶은 경험</legend>
-                    <div className="cf-choice-grid">
-                      {SKILLS.map((s) => (
-                        <label key={s.id}>
-                          <input
-                            type="checkbox"
-                            checked={form.learningGoals.includes(s.id)}
-                            onChange={() =>
-                              update(
-                                'learningGoals',
-                                toggle(form.learningGoals, s.id),
-                              )
-                            }
-                          />
-                          {s.name}
-                        </label>
-                      ))}
-                    </div>
-                  </fieldset>
-                  <fieldset>
-                    <legend>해보고 싶은 역할</legend>
-                    <div className="cf-choice-grid">
-                      {ROLES.map((r) => (
-                        <label key={r.id}>
-                          <input
-                            type="checkbox"
-                            checked={form.preferredRoles.includes(r.id)}
-                            onChange={() =>
-                              update(
-                                'preferredRoles',
-                                toggle(form.preferredRoles, r.id),
-                              )
-                            }
-                          />
-                          {r.name}
-                        </label>
-                      ))}
-                    </div>
-                  </fieldset>
-                  <details>
-                    <summary>아직 경험해보지 않은 역량 직접 표시</summary>
-                    <p className="cf-help">
-                      이력서에 없는 것과 실제 미경험을 구분하기 위한 선택
-                      항목입니다.
-                    </p>
-                    <div className="cf-choice-grid">
-                      {SKILLS.map((s) => (
-                        <label key={s.id}>
-                          <input
-                            type="checkbox"
-                            checked={form.noExperience.includes(s.id)}
-                            onChange={() =>
-                              update(
-                                'noExperience',
-                                toggle(form.noExperience, s.id),
-                              )
-                            }
-                          />
-                          {s.name}
-                        </label>
-                      ))}
-                    </div>
-                  </details>
-                  <label>
-                    분석 방식
-                    <select
-                      value={mode}
-                      onChange={(e) =>
-                        setMode(e.target.value as 'ai' | 'basic')
-                      }
-                    >
-                      <option value="basic">기본 근거 추출, 규칙 기반</option>
-                      <option value="ai" disabled={!data.aiConfigured}>
-                        {data.ai?.provider === 'local'
-                          ? '로컬 LLM 분석'
-                          : '외부 AI 분석'}
-                        {!data.aiConfigured ? ', 서버 설정 필요' : ''}
-                      </option>
-                    </select>
-                  </label>
-                  {mode === 'ai' && data.ai?.provider === 'local' && (
-                    <p className="cf-help">
-                      이 Mac의 {data.ai.model || '로컬 모델'}에서 분석합니다.
-                      이력서와 공고는 외부 AI로 전송하지 않습니다.
-                    </p>
-                  )}
-                  {mode === 'ai' && data.ai?.provider === 'openai' && (
-                    <label className="cf-agreement">
-                      <input
-                        type="checkbox"
-                        checked={consent}
-                        onChange={(e) => setConsent(e.target.checked)}
-                        required
-                      />
-                      이력서와 목표 공고를 OpenAI 분석에 보내는 데 동의합니다.
-                      개인정보를 먼저 확인했습니다.
-                    </label>
-                  )}
-                  <button
-                    className="btn primary wide"
-                    disabled={
-                      busy ||
-                      (mode === 'ai' &&
-                        (!data.aiConfigured ||
-                          (data.ai?.provider === 'openai' && !consent)))
-                    }
-                  >
-                    <Sparkles size={16} />
-                    {busy
-                      ? '근거를 확인하고 있어요…'
-                      : '역량 분석하고 추천받기'}
-                  </button>
-                </fieldset>
-              </form>
-            </section>
-            <div className="cf-stack">
-              <section className="cf-card">
-                <p className="eyebrow">EVIDENCE, NOT A SCORE</p>
-                <h2>나의 역량 프로필</h2>
-                {profile ? (
-                  <>
-                    <p>{profile.analysis.summary}</p>
-                    {profile.analysis.engine?.provider === 'local' && (
+                <details
+                  className="resume-editor"
+                  key={profile ? 'saved' : 'new'}
+                  open={!profile}
+                >
+                  <summary>
+                    {profile
+                      ? `저장된 이력서 수정: ${profile.resumeName}`
+                      : '이력서 입력하기'}
+                  </summary>
+                  <form onSubmit={saveProfile} className="cf-form">
+                    <fieldset disabled={busy}>
+                      <label>
+                        이력서 이름
+                        <input
+                          value={form.resumeName}
+                          maxLength={80}
+                          required
+                          onChange={(e) => update('resumeName', e.target.value)}
+                        />
+                      </label>
+                      <label className="cf-upload">
+                        <Upload size={20} />
+                        <span>
+                          PDF·텍스트 파일 불러오기
+                          <small>
+                            5MB 이하 · PDF 원본은 브라우저에서만 읽어요
+                          </small>
+                        </span>
+                        <input
+                          type="file"
+                          accept=".pdf,.txt,application/pdf,text/plain"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            void act(async () => {
+                              const { resumeFileText } =
+                                await import('@/lib/career/pdf');
+                              const text = await resumeFileText(file);
+                              update('resumeText', text);
+                              setNotice(
+                                '내용을 불러왔습니다. 추출 내용과 개인정보를 확인한 뒤 저장해주세요.',
+                              );
+                            });
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                      <label>
+                        이력서·포트폴리오 내용
+                        <textarea
+                          rows={10}
+                          minLength={30}
+                          maxLength={40000}
+                          required
+                          value={form.resumeText}
+                          placeholder="직접 했던 프로젝트, 맡은 업무, 사용한 기술과 결과를 적어주세요."
+                          onChange={(e) => update('resumeText', e.target.value)}
+                        />
+                      </label>
                       <p className="cf-help">
-                        로컬 모델의 분석 초안입니다. 실제 담당 범위와 공고 요건을
-                        원문으로 확인해주세요.
+                        원문과 분석은 내 계정에 저장됩니다. 팀에는 선택해서
+                        공유한 역량만 전달됩니다.
                       </p>
-                    )}
-                    <span className="cf-chip">
-                      {profile.analysis.mode === 'ai'
-                        ? profile.analysis.engine?.provider === 'local'
-                          ? `로컬 LLM 분석, ${profile.analysis.engine.model}`
-                          : '외부 AI 분석, 원문 근거 확인'
-                        : '기본 추출, 키워드 기반'}
-                    </span>
-                    {profile.analysis.reviewedAt && (
-                      <span className="cf-chip">검토 수정 반영</span>
-                    )}
-                    <div className="cf-evidence-list">
-                      {profile.analysis.skills.map((s) => (
-                        <article key={s.skillId}>
-                          <div>
-                            <strong>{skillName(s.skillId)}</strong>
-                            <span className="cf-chip">{LEVEL[s.level]}</span>
-                          </div>
-                          <blockquote>{s.quote}</blockquote>
-                          {profile.noExperience.includes(s.skillId) && (
-                            <p className="cf-help">
-                              본인이 미경험으로 표시해 추천의 강점에서는
-                              제외했습니다.
-                            </p>
-                          )}
-                        </article>
-                      ))}
-                      {!profile.analysis.skills.length && (
-                        <p>
-                          확인 가능한 근거를 찾지 못했습니다. 담당 업무와 기술을
-                          구체적으로 적어주세요.
-                        </p>
-                      )}
-                    </div>
-                    <CareerAnalysisReview
-                      key={profile.id}
-                      profile={profile}
-                      disabled={busy}
-                      unsaved={(
-                        Object.keys(EMPTY) as (keyof ProfileInput)[]
-                      ).some(
-                        (key) =>
-                          JSON.stringify(form[key]) !==
-                          JSON.stringify(profile[key]),
-                      )}
-                      onSave={saveReview}
-                    />
-                    {!!profile.analysis.questions.length && (
-                      <div className="cf-callout">
-                        <strong>추가로 확인하면 좋아요</strong>
-                        <ul>
-                          {profile.analysis.questions.map((q) => (
-                            <li key={q}>{q}</li>
+                      <label>
+                        목표 직무
+                        <select
+                          value={form.targetRole}
+                          onChange={(e) => update('targetRole', e.target.value)}
+                        >
+                          <option value="">아직 탐색 중</option>
+                          {TARGETS.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                            </option>
                           ))}
-                        </ul>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="cf-empty">
-                    이력서를 저장하면 역량마다 어떤 문장에서 찾았는지
-                    보여드려요.
-                  </p>
-                )}
-              </section>
-              <section className="cf-card">
-                <h2>목표까지, 보완할 경험</h2>
-                <p className="cf-help">
-                  ‘근거 없음’은 능력이 없다는 뜻이 아닙니다. 실제 경험이 있다면
-                  이력서에 추가해주세요.
-                </p>
-                {!!profile?.targetPosting && !data.gaps.length && (
-                  <p>
-                    이 공고에서 지원하는 역량 항목을 찾지 못했습니다. AI
-                    분석이나 더 구체적인 공고 본문으로 다시 확인해주세요.
-                  </p>
-                )}
-                <div className="cf-gap-list">
-                  {data.gaps.map((g) => (
-                    <article key={g.skillId}>
-                      <div>
-                        <strong>{skillName(g.skillId)}</strong>
-                        <span
-                          className={
-                            g.status === 'matched'
-                              ? 'cf-status good'
-                              : 'cf-status'
+                        </select>
+                      </label>
+                      <label>
+                        비교할 채용공고 <span className="muted">선택</span>
+                        <textarea
+                          rows={4}
+                          maxLength={20000}
+                          value={form.targetPosting}
+                          onChange={(e) =>
+                            update('targetPosting', e.target.value)
+                          }
+                          placeholder="관심 공고의 자격요건·우대사항을 붙여넣어 주세요. 없으면 직무별 학습 참고 기준과 비교합니다."
+                        />
+                      </label>
+                      <fieldset>
+                        <legend>프로젝트에서 쌓고 싶은 경험</legend>
+                        <div className="cf-choice-grid">
+                          {SKILLS.map((s) => (
+                            <label key={s.id}>
+                              <input
+                                type="checkbox"
+                                checked={form.learningGoals.includes(s.id)}
+                                onChange={() =>
+                                  update(
+                                    'learningGoals',
+                                    toggle(form.learningGoals, s.id),
+                                  )
+                                }
+                              />
+                              {s.name}
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+                      <fieldset>
+                        <legend>해보고 싶은 역할</legend>
+                        <div className="cf-choice-grid">
+                          {ROLES.map((r) => (
+                            <label key={r.id}>
+                              <input
+                                type="checkbox"
+                                checked={form.preferredRoles.includes(r.id)}
+                                onChange={() =>
+                                  update(
+                                    'preferredRoles',
+                                    toggle(form.preferredRoles, r.id),
+                                  )
+                                }
+                              />
+                              {r.name}
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+                      <details>
+                        <summary>아직 경험해보지 않은 역량 직접 표시</summary>
+                        <p className="cf-help">
+                          이력서에 없는 것과 실제 미경험을 구분하기 위한 선택
+                          항목입니다.
+                        </p>
+                        <div className="cf-choice-grid">
+                          {SKILLS.map((s) => (
+                            <label key={s.id}>
+                              <input
+                                type="checkbox"
+                                checked={form.noExperience.includes(s.id)}
+                                onChange={() =>
+                                  update(
+                                    'noExperience',
+                                    toggle(form.noExperience, s.id),
+                                  )
+                                }
+                              />
+                              {s.name}
+                            </label>
+                          ))}
+                        </div>
+                      </details>
+                      <label>
+                        분석 방식
+                        <select
+                          value={mode}
+                          onChange={(e) =>
+                            setMode(e.target.value as 'ai' | 'basic')
                           }
                         >
-                          {STATUS[g.status]}
-                        </span>
-                      </div>
-                      <p>{g.quote}</p>
-                    </article>
-                  ))}
-                </div>
-                {profile && (
-                  <button
-                    className="btn primary wide"
-                    onClick={() => setSection('recommend')}
-                  >
-                    프로젝트로 경험 쌓기 <ArrowRight size={16} />
-                  </button>
-                )}
+                          <option value="basic">
+                            기본 근거 추출, 규칙 기반
+                          </option>
+                          <option value="ai" disabled={!data.aiConfigured}>
+                            {data.ai?.provider === 'local'
+                              ? '로컬 LLM 분석'
+                              : '외부 AI 분석'}
+                            {!data.aiConfigured ? ', 서버 설정 필요' : ''}
+                          </option>
+                        </select>
+                      </label>
+                      {mode === 'ai' && data.ai?.provider === 'local' && (
+                        <p className="cf-help">
+                          이 Mac의 {data.ai.model || '로컬 모델'}에서
+                          분석합니다. 이력서와 공고는 외부 AI로 전송하지
+                          않습니다.
+                        </p>
+                      )}
+                      {mode === 'ai' && data.ai?.provider === 'openai' && (
+                        <label className="cf-agreement">
+                          <input
+                            type="checkbox"
+                            checked={consent}
+                            onChange={(e) => setConsent(e.target.checked)}
+                            required
+                          />
+                          이력서와 목표 공고를 OpenAI 분석에 보내는 데
+                          동의합니다. 개인정보를 먼저 확인했습니다.
+                        </label>
+                      )}
+                      <button
+                        className="btn primary wide"
+                        disabled={
+                          busy ||
+                          (mode === 'ai' &&
+                            (!data.aiConfigured ||
+                              (data.ai?.provider === 'openai' && !consent)))
+                        }
+                      >
+                        <Sparkles size={16} />
+                        {busy
+                          ? '근거를 확인하고 있어요…'
+                          : '역량 분석하고 추천받기'}
+                      </button>
+                    </fieldset>
+                  </form>
+                </details>
               </section>
+              <div className="cf-stack">
+                <section className="cf-card">
+                  <p className="eyebrow">MY TECHNOLOGIES</p>
+                  <h2>나의 기술과 경험</h2>
+                  {profile ? (
+                    <>
+                      <span className="cf-chip">
+                        {profile.analysis.mode === 'ai'
+                          ? profile.analysis.engine?.provider === 'local'
+                            ? `로컬 LLM 분석, ${profile.analysis.engine.model}`
+                            : '외부 AI 분석, 원문 근거 확인'
+                          : '기본 추출, 키워드 기반'}
+                      </span>
+                      {profile.analysis.reviewedAt && (
+                        <span className="cf-chip">검토 수정 반영</span>
+                      )}
+                      <CareerTechnologies
+                        key={profile.id}
+                        profile={profile}
+                        disabled={
+                          busy ||
+                          (Object.keys(EMPTY) as (keyof ProfileInput)[]).some(
+                            (key) =>
+                              JSON.stringify(form[key]) !==
+                              JSON.stringify(profile[key]),
+                          )
+                        }
+                        onSave={async (changes) => {
+                          await act(async () => {
+                            await request('/api/career', {
+                              action: 'reviewTechnologies',
+                              version,
+                              changes,
+                            });
+                            hydrate(await request<Personal>('/api/career'));
+                            setNotice(
+                              '기술 분류를 수정했습니다. 원문은 그대로 보존합니다.',
+                            );
+                          });
+                        }}
+                      />
+                      <details>
+                        <summary>추천에 사용할 역량 검토</summary>
+                        <CareerAnalysisReview
+                          key={profile.id}
+                          profile={profile}
+                          disabled={busy}
+                          unsaved={(
+                            Object.keys(EMPTY) as (keyof ProfileInput)[]
+                          ).some(
+                            (key) =>
+                              JSON.stringify(form[key]) !==
+                              JSON.stringify(profile[key]),
+                          )}
+                          onSave={saveReview}
+                        />
+                      </details>
+                      {!!profile.analysis.questions.length && (
+                        <div className="cf-callout">
+                          <strong>추가로 확인하면 좋아요</strong>
+                          <ul>
+                            {profile.analysis.questions.map((q) => (
+                              <li key={q}>{q}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="cf-empty">
+                      이력서를 저장하면 역량마다 어떤 문장에서 찾았는지
+                      보여드려요.
+                    </p>
+                  )}
+                </section>
+                <section className="cf-card">
+                  <h2>목표까지, 보완할 경험</h2>
+                  <p className="cf-help">
+                    ‘근거 없음’은 능력이 없다는 뜻이 아닙니다. 실제 경험이
+                    있다면 이력서에 추가해주세요.
+                  </p>
+                  {!!profile?.targetPosting && !data.gaps.length && (
+                    <p>
+                      이 공고에서 지원하는 역량 항목을 찾지 못했습니다. AI
+                      분석이나 더 구체적인 공고 본문으로 다시 확인해주세요.
+                    </p>
+                  )}
+                  <div className="cf-gap-list">
+                    {data.gaps.map((g) => (
+                      <article key={g.skillId}>
+                        <div>
+                          <strong>{skillName(g.skillId)}</strong>
+                          <span
+                            className={
+                              g.status === 'matched'
+                                ? 'cf-status good'
+                                : 'cf-status'
+                            }
+                          >
+                            {STATUS[g.status]}
+                          </span>
+                        </div>
+                        <p>{g.quote}</p>
+                      </article>
+                    ))}
+                  </div>
+                  {profile && (
+                    <button
+                      className="btn primary wide"
+                      onClick={() => setSection('recommend')}
+                    >
+                      프로젝트로 경험 쌓기 <ArrowRight size={16} />
+                    </button>
+                  )}
+                </section>
+              </div>
             </div>
-          </div>
+            {profile && (
+              <CareerIntroduction
+                profile={profile}
+                disabled={
+                  busy ||
+                  (Object.keys(EMPTY) as (keyof ProfileInput)[]).some(
+                    (key) =>
+                      JSON.stringify(form[key]) !==
+                      JSON.stringify(profile[key]),
+                  )
+                }
+                onBusy={setBusy}
+                onSaved={(p) => {
+                  setData((current) =>
+                    current ? { ...current, profile: p } : current,
+                  );
+                  setVersion(p.version);
+                  setForm(p);
+                }}
+              />
+            )}
+          </>
         )}
         {data && section === 'recommend' && (
           <section>

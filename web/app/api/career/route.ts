@@ -2,6 +2,7 @@ import { identity, AuthUnavailable } from '@/lib/auth';
 import { AccessError } from '@/lib/projects';
 import { PolicyError } from '@/lib/sprint-policy';
 import { Conflict } from '@/lib/sprint-store';
+import { reviewTechnologies } from '@/lib/career/focused-model';
 import { SKILLS, ROLES, TARGETS } from '@/lib/career/catalog';
 import {
   CareerError,
@@ -152,7 +153,7 @@ export async function POST(request: Request) {
         throw e;
       }
     }
-    if (b.action === 'reviewProfile') {
+    if (b.action === 'reviewProfile' || b.action === 'reviewTechnologies') {
       if (!Number.isInteger(b.version) || Number(b.version) < 1)
         throw new CareerError('프로필 버전을 확인해주세요.');
       const claim = await claimProfileWrite(user.id, Number(b.version), false);
@@ -160,7 +161,10 @@ export async function POST(request: Request) {
         const profile = await readProfile(user.id);
         if (!profile || profile.version !== Number(b.version))
           throw new CareerError('최신 프로필을 불러와 다시 검토해주세요.', 409);
-        const analysis = reviewAnalysis(b, profile);
+        const analysis =
+          b.action === 'reviewTechnologies'
+            ? reviewTechnologies(b.changes, profile)
+            : reviewAnalysis(b, profile);
         return reply({
           profile: await saveProfile(claim, profileInput(profile), analysis),
         });

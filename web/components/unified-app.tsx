@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { TeamDirectory } from './team-directory';
 import { ProjectCreate } from './project-create';
+import { CareerMap } from './career-map';
 import { CareerWorkspace } from './career-workspace';
 import ProjectDashboard from './project-dashboard';
 import { ThemeToggle } from './theme-toggle';
@@ -44,6 +45,7 @@ type Tab =
   | 'work'
   | 'jobs'
   | 'profile'
+  | 'graph'
   | 'portfolio'
   | 'experience'
   | 'team';
@@ -54,7 +56,8 @@ const TITLES: Record<Tab, string> = {
   templates: '프로젝트 찾기',
   work: '내 프로젝트',
   jobs: '공고 찾기',
-  profile: '이력서·역량',
+  profile: '이력서와 소개',
+  graph: '경험 지도',
   portfolio: '포트폴리오',
   experience: '경험·성장 기록',
   team: '팀 역할 추천',
@@ -67,7 +70,7 @@ const MAIN_NAV = [
   { id: 'jobs', icon: BriefcaseBusiness },
   { id: 'profile', icon: UserRound },
 ] as const;
-const PERSONAL: Tab[] = ['profile', 'portfolio', 'experience'];
+const PERSONAL: Tab[] = ['profile', 'graph', 'portfolio', 'experience'];
 function tabFrom(value: string): Tab {
   return Object.hasOwn(TITLES, value) ? (value as Tab) : 'home';
 }
@@ -1227,6 +1230,7 @@ export function UnifiedApp({
               />
             </>
           )}
+          {tab === 'graph' && <CareerMap />}
           {tab === 'portfolio' && (
             <>
               <section className="hub-card hub-info">

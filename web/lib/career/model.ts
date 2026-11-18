@@ -1,3 +1,4 @@
+import { analyzeFocused, focusedModelConfig } from './focused-model';
 import { SKILLS } from './catalog';
 import { CareerError, validateAnalysis, type ProfileInput } from './profile';
 import { analyzeLocally, localModelConfig } from './local-model';
@@ -51,6 +52,10 @@ export function careerAiInfo() {
   if (provider !== 'local')
     return { provider: 'unavailable', model: '', configured: false };
   try {
+    if (process.env.CAREERFLOW_LOCAL_ENGINE === 'focused-lora') {
+      const config = focusedModelConfig();
+      return { provider, model: config.label, configured: true };
+    }
     const { model, label } = localModelConfig();
     return {
       provider,
@@ -66,7 +71,10 @@ export function careerAiConfigured() {
 }
 export async function analyzeWithAI(input: ProfileInput) {
   const provider = process.env.CAREERFLOW_AI_PROVIDER || 'local';
-  if (provider === 'local') return analyzeLocally(input);
+  if (provider === 'local')
+    return process.env.CAREERFLOW_LOCAL_ENGINE === 'focused-lora'
+      ? analyzeFocused(input)
+      : analyzeLocally(input);
   if (provider !== 'openai')
     throw new CareerError('AI 분석 제공자 설정을 확인해주세요.', 503);
   const key = process.env.OPENAI_API_KEY;

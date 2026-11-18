@@ -28,10 +28,36 @@ export type Requirement = {
   quote: string;
   importance: 'required' | 'preferred' | 'reference';
 };
+export type Technology = {
+  name: string;
+  reviewed?: boolean;
+  state:
+    | 'used'
+    | 'studied'
+    | 'listed'
+    | 'planned'
+    | 'other'
+    | 'denied'
+    | 'unclear';
+  mentions: { quote: string; text: string }[];
+};
+export type IntroResult = {
+  provider: 'openai' | 'anthropic' | 'google';
+  model: string;
+  fingerprint: string;
+  lines: { text: string; evidence: string[] }[];
+  latencyMs: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  createdAt: string;
+};
 export type Analysis = {
+  technologies?: Technology[];
+  introductions?: IntroResult[];
+  selectedIntroduction?: IntroResult['provider'];
   mode: 'basic' | 'ai';
   reviewedAt?: string;
-  engine?: { provider: 'local' | 'openai'; model: string };
+  engine?: { provider: 'local' | 'openai'; model: string; adapter?: string };
   summary: string;
   skills: SkillEvidence[];
   requirements: Requirement[];

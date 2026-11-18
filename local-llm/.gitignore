@@ -12,3 +12,10 @@ __pycache__/
 *.pdf
 *.safetensors
 *.gguf
+
+/adapters
+
+/data
+/runs
+/cache
+/tmp
