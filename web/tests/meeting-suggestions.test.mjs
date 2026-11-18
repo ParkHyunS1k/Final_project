@@ -119,6 +119,23 @@ test('6. 선행 2개 이상인 업무 → integration 1건', () => {
   assert.deepEqual(integration[0].taskIds, [1, 2, 3]);
 });
 
+test('6-1. 끝난 선행 업무는 통합 지점에서 빼고, 남은 선행이 2개 미만이면 제안하지 않음', () => {
+  const tasks = [
+    { id: 1, person: 0, remaining: 0, done: true, dependsOn: [] },
+    { id: 2, person: 1, remaining: 4, done: false, dependsOn: [] },
+    { id: 3, person: 2, remaining: 4, done: false, dependsOn: [] },
+    { id: 4, person: 2, remaining: 4, done: false, dependsOn: [1, 2] },
+    { id: 5, person: 2, remaining: 4, done: false, dependsOn: [1, 2, 3] },
+  ];
+  const result = meetingSuggestions(tasks, emptyPlan(), members, NOW);
+  const integration = result.filter((r) => r.kind === 'integration');
+  assert.deepEqual(integration.map((r) => r.id), ['integration:5']);
+  assert.equal(integration[0].reason, '업무 5에 선행 업무 2건이 모입니다');
+  assert.equal(integration[0].agenda[0], '선행 업무 2건 진행 상황 확인');
+  assert.deepEqual(integration[0].taskIds, [2, 3, 5]);
+  assert.deepEqual(integration[0].people, [2, 1]);
+});
+
 test('7. 완료된 업무는 어떤 제안에도 등장하지 않음', () => {
   const tasks = [
     { id: 1, person: 0, remaining: 0, done: true, dependsOn: [] },

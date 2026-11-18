@@ -118,22 +118,24 @@ export function meetingSuggestions(
     });
   }
 
-  // integration: 선행 업무가 2개 이상 모이는 미완료 업무마다 하나씩 제안한다.
+  // integration: 끝나지 않은 선행 업무가 2개 이상 모이는 미완료 업무마다 하나씩 제안한다.
+  const activeIds = new Set(active.map((t) => t.id));
   const integrationTasks = active
-    .filter((t) => t.dependsOn.length >= 2)
-    .sort((x, y) => x.id - y.id);
-  for (const t of integrationTasks) {
+    .map((t) => ({ t, deps: t.dependsOn.filter((d) => activeIds.has(d)) }))
+    .filter(({ deps }) => deps.length >= 2)
+    .sort((x, y) => x.t.id - y.t.id);
+  for (const { t, deps } of integrationTasks) {
     const people = [
-      ...new Set([t.person, ...t.dependsOn.map((d) => activeById.get(d)?.person).filter((p): p is number => p !== undefined)]),
+      ...new Set([t.person, ...deps.map((d) => activeById.get(d)?.person).filter((p): p is number => p !== undefined)]),
     ];
     suggestions.push({
       id: `integration:${t.id}`,
       kind: 'integration',
       title: '통합 지점 점검 회의',
-      agenda: [`선행 업무 ${t.dependsOn.length}건 진행 상황 확인`, '통합 시점과 순서 합의'],
-      reason: `업무 ${t.id}에 선행 업무 ${t.dependsOn.length}건이 모입니다`,
+      agenda: [`선행 업무 ${deps.length}건 진행 상황 확인`, '통합 시점과 순서 합의'],
+      reason: `업무 ${t.id}에 선행 업무 ${deps.length}건이 모입니다`,
       suggestedAt: currentPlan.starts[t.id] ?? null,
-      taskIds: [t.id, ...t.dependsOn].sort((x, y) => x - y),
+      taskIds: [t.id, ...deps].sort((x, y) => x - y),
       people,
     });
   }
