@@ -538,6 +538,29 @@
     align-items: flex-start;
   }
 }
+.cf-analysis-review {
+  margin-top: 1rem;
+}
+.cf-analysis-review > summary {
+  cursor: pointer;
+  font-weight: 650;
+  padding: 0.75rem 0;
+}
+.cf-review-row {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.cf-review-row > label:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.cf-review-row input[type='checkbox'] {
+  width: auto;
+}
+
 /* 마이페이지 '가져올 수 있는 업무' 양식(.my-pending)도 위 경험 양식 스타일을 같이 쓴다. */
 /* 저장한 이력서가 있으면 결과만 한 줄로(마이페이지 2026-11-17). */
 .cf-columns.cf-results {

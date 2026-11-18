@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { setupTestDb } from './helpers/pg-db.mjs';
 process.env.AUTH_DEV_HEADERS = '1';
+process.env.CAREERFLOW_AI_PROVIDER = 'openai';
 delete process.env.OPENAI_API_KEY;
 const db = await setupTestDb();
 const out = join(mkdtempSync(join(tmpdir(), 'career-test-')), 'api.mjs');
@@ -16,6 +17,8 @@ await build({
     export {GET as sprintGET,POST as sprintPOST} from './app/api/sprint/route';
     export {POST as projectPOST} from './app/api/projects/route';
     export {basicAnalysis,profileInput,validateAnalysis} from './lib/career/profile';
+    export {pdfPageText} from './lib/career/pdf-text';
+    export {sourceLines,resolveLocalEvidence} from './lib/career/local-evidence';
     export {recommendRoles} from './lib/career/roles'; export {TEMPLATES} from './lib/career/catalog';`,
     resolveDir: process.cwd(),
     loader: 'ts',
@@ -701,4 +704,479 @@ test('개인 기여를 가져오면 목표 비교가 갱신되고 재개·담당
     ).n,
     0,
   );
+});
+
+test('PDF 글꼴 경계에 공백을 추가하지 않고 원래 공백과 줄바꿈을 보존한다', () => {
+  const items = [
+    '모델',
+    '과 대시보드는',
+    ' ',
+    '팀',
+    '원이',
+    ' ',
+    '구',
+    '현했습니다.',
+  ].map((str) => ({ str, hasEOL: false }));
+  items.at(-1).hasEOL = true;
+  assert.equal(
+    api.pdfPageText([{ type: 'beginMarkedContent' }, ...items]),
+    '모델과 대시보드는 팀원이 구현했습니다.\n',
+  );
+  assert.equal(
+    api.pdfPageText([{ str: 'Python ' }, { str: 'API', hasEOL: true }]),
+    'Python API\n',
+  );
+});
+
+test('지원 제목, 프로필 링크와 팀원 구현을 본인의 수행 근거로 올리지 않는다', () => {
+  const analysis = api.basicAnalysis(
+    api.profileInput(
+      profileBody({
+        resumeText: [
+          'AI 개발 인턴(머신러닝 엔지니어) 지원',
+          'https://github.com/example-person',
+          '대시보드는 팀원이 구현했습니다.',
+          '날짜별 파일을 팀원이 담',
+          '당한 데이터 시각화에 전달했습니다.',
+          '저는 기능 기획과 실행 확인을 맡았습니다.',
+          '프로젝트 적용 기술: Python, SQLite, RAG',
+        ].join('\n'),
+      }),
+    ),
+  );
+  assert.ok(
+    !analysis.skills.some((s) =>
+      ['ml', 'visualization', 'git'].includes(s.skillId),
+    ),
+  );
+  assert.equal(
+    analysis.skills.find((s) => s.skillId === 'planning').level,
+    'applied',
+  );
+  assert.equal(
+    analysis.skills.find((s) => s.skillId === 'python').level,
+    'mentioned',
+  );
+});
+
+test('AI 작성 코드의 수행 범위는 확인 대상으로 남기고 독립 수행과 학습은 구별한다', () => {
+  const analyze = (resumeText) =>
+    api.basicAnalysis(api.profileInput(profileBody({ resumeText })));
+  const assisted = analyze(
+    '본인 담당 코드는 AI가 작성했습니다.\nPython으로 검색 기능을 구현했습니다.\n저는 기능 기획을 맡았습니다.',
+  );
+  assert.equal(
+    assisted.skills.find((s) => s.skillId === 'python').level,
+    'mentioned',
+  );
+  assert.equal(
+    assisted.skills.find((s) => s.skillId === 'planning').level,
+    'applied',
+  );
+  assert.match(assisted.questions[0], /AI가 작성한 코드/);
+  const own = analyze(
+    'Python으로 검색 기능을 구현했습니다.\nGit 브랜치 사용법을 학습했습니다.',
+  );
+  assert.equal(own.skills.find((s) => s.skillId === 'python').level, 'applied');
+  assert.equal(own.skills.find((s) => s.skillId === 'git').level, 'learning');
+});
+
+test('공고의 자격 요건과 우대사항을 구분하고 회사 소개를 필수 요건으로 만들지 않는다', () => {
+  const analysis = api.basicAnalysis(
+    api.profileInput(
+      profileBody({
+        targetPosting: [
+          'RAG와 Docker를 사용하는 회사입니다.',
+          '주요업무',
+          'AWS 배포',
+          '자격요건',
+          'Python 구현 경험',
+          'Git 브랜치 협업',
+          '우대사항',
+          'RAG 경험',
+          'LLM 출력 평가 자동화',
+          '혜택 및 복지',
+          'React 교육 제공',
+        ].join('\n'),
+      }),
+    ),
+  );
+  assert.deepEqual(
+    analysis.requirements.map((r) => [r.skillId, r.importance]),
+    [
+      ['python', 'required'],
+      ['git', 'required'],
+      ['rag', 'preferred'],
+      ['evaluation', 'preferred'],
+    ],
+  );
+});
+
+test('근거 수정은 새 버전을 보존하고 공고 비교와 추천에 반영하며 AI 한도를 쓰지 않는다', async () => {
+  const before = await profile('review-valid', {
+    resumeText:
+      'Python 검색 기능을 실행하고 오류 현상을 확인했습니다.\nRAG 기술을 활용하는 프로젝트에 참여했습니다.',
+    targetPosting: 'Python 경험 필수\nRAG 우대',
+    noExperience: [],
+    learningGoals: [],
+  });
+  const beforeState = await json(await get('review-valid'));
+  assert.equal(
+    beforeState.gaps.find((g) => g.skillId === 'python').status,
+    'partial',
+  );
+  const changed = before.analysis.skills.map((s) =>
+    s.skillId === 'python' ? { ...s, level: 'learning' } : s,
+  );
+  const saved = await json(
+    await post('review-valid', {
+      action: 'reviewProfile',
+      version: 1,
+      skills: changed,
+      requirements: before.analysis.requirements,
+    }),
+  );
+  assert.equal(saved.profile.version, 2);
+  assert.ok(saved.profile.analysis.reviewedAt);
+  assert.ok(
+    !saved.profile.analysis.questions.some((q) => q.includes('Python')),
+  );
+  const afterState = await json(await get('review-valid'));
+  assert.equal(
+    afterState.profile.analysis.skills.find((s) => s.skillId === 'python')
+      .level,
+    'learning',
+  );
+  assert.ok(
+    afterState.recommendations.some((r) => r.strengths.includes('python')),
+  );
+  assert.ok(
+    !beforeState.recommendations.some((r) => r.strengths.includes('python')),
+  );
+  const old = await db.one(
+    'SELECT analysis FROM career_profile_versions WHERE id=?',
+    before.id,
+  );
+  assert.equal(
+    old.analysis.skills.find((s) => s.skillId === 'python').level,
+    'mentioned',
+  );
+  assert.equal(
+    (
+      await db.one(
+        'SELECT count(*) AS n FROM career_ai_quota WHERE user_id=?',
+        'review-valid',
+      )
+    ).n,
+    0,
+  );
+  assert.equal((await json(await get('review-other'))).profile, null);
+});
+
+test('검토 저장은 원문 없는 근거, 중복, 다른 계정, 프로젝트 근거 위조와 오래된 버전을 거부한다', async () => {
+  const p = await profile('review-invalid');
+  const body = {
+    action: 'reviewProfile',
+    version: 1,
+    skills: p.analysis.skills,
+    requirements: p.analysis.requirements,
+  };
+  assert.equal((await post('review-stranger', body)).status, 409);
+  const first = p.analysis.skills[0];
+  for (const skills of [
+    [{ ...first, quote: '이력서에 존재하지 않는 가짜 근거' }],
+    [first, first],
+    [{ ...first, source: 'project', sourceId: 'foreign-project' }],
+    [{ ...first, skillId: 'unknown-skill' }],
+    [{ ...first, level: 'expert' }],
+  ])
+    assert.equal(
+      (await post('review-invalid', { ...body, skills })).status,
+      400,
+    );
+  assert.equal(
+    (
+      await post('review-invalid', {
+        ...body,
+        requirements: [
+          {
+            skillId: 'python',
+            quote: '공고에 없는 근거',
+            importance: 'required',
+          },
+        ],
+      })
+    ).status,
+    400,
+  );
+  // Invalid edits release their reservation, so a valid request can immediately succeed.
+  await json(await post('review-invalid', body));
+  assert.equal((await post('review-invalid', body)).status, 409);
+  assert.equal((await json(await get('review-invalid'))).profile.version, 2);
+});
+
+test('검토 동시 저장은 하나만 확정하고 미경험이나 타인의 수행은 적용 근거로 올리지 않는다', async () => {
+  const p = await profile('review-race', {
+    resumeText:
+      'Python 경험이 없습니다.\nRAG 기능은 팀원이 구현했습니다.\n기능 기획에 참여했습니다.',
+  });
+  const body = {
+    action: 'reviewProfile',
+    version: 1,
+    skills: p.analysis.skills,
+    requirements: p.analysis.requirements,
+  };
+  for (const quote of [
+    'Python 경험이 없습니다.',
+    'RAG 기능은 팀원이 구현했습니다.',
+  ])
+    assert.equal(
+      (
+        await post('review-race', {
+          ...body,
+          skills: [{ skillId: 'python', level: 'applied', quote }],
+        })
+      ).status,
+      400,
+    );
+  const responses = await Promise.all([
+    post('review-race', body),
+    post('review-race', body),
+  ]);
+  assert.deepEqual(
+    responses.map((r) => r.status).sort((a, b) => a - b),
+    [200, 409],
+  );
+});
+
+test('프로필 주소의 GitHub 표시는 협업 근거가 아니며 종료 예정 교육의 현재 학습은 보존한다', () => {
+  const analysis = api.basicAnalysis(
+    api.profileInput(
+      profileBody({
+        resumeText: [
+          'GitHub github.com/example-person | 포트폴리오 example.test',
+          '2026년 과정(종료 예정), 수강 중. 머신러닝 응용 학습.',
+          'React 학습은 다음 달 시작할 예정입니다.',
+        ].join('\n'),
+      }),
+    ),
+  );
+  assert.ok(!analysis.skills.some((s) => ['git', 'react'].includes(s.skillId)));
+  assert.equal(
+    analysis.skills.find((s) => s.skillId === 'ml').level,
+    'learning',
+  );
+});
+
+test('로컬 모델을 기본으로 선택하고 외부 키가 있어도 이력서를 로컬 서버로만 전송한다', async () => {
+  const original = globalThis.fetch;
+  delete process.env.CAREERFLOW_AI_PROVIDER;
+  process.env.CAREERFLOW_LOCAL_MODEL = 'models/synthetic-local';
+  process.env.CAREERFLOW_LOCAL_URL = 'http://127.0.0.1:8089';
+  process.env.OPENAI_API_KEY = 'must-not-be-transmitted';
+  try {
+    let calls = 0;
+    globalThis.fetch = async (url, init) => {
+      calls++;
+      assert.equal(url, 'http://127.0.0.1:8089/v1/chat/completions');
+      assert.equal(init.headers.Authorization, undefined);
+      assert.equal(init.redirect, 'error');
+      const body = JSON.parse(init.body);
+      assert.equal(body.model, 'models/synthetic-local');
+      assert.ok(body.messages[1].content.includes('Python'));
+      const isPosting = !('resume' in JSON.parse(body.messages[1].content));
+      return Response.json({
+        choices: [
+          {
+            finish_reason: 'stop',
+            message: {
+              content: JSON.stringify({
+                summary: isPosting
+                  ? '공고를 지원자의 경력으로 오인한 요약'
+                  : '직접 구현한 근거입니다.',
+                skills: isPosting
+                  ? [
+                      {
+                        skillId: 'docker',
+                        level: 'applied',
+                        startLine: 999,
+                        endLine: 999,
+                      },
+                    ]
+                  : [
+                      {
+                        skillId: 'python',
+                        level: 'applied',
+                        startLine: 1,
+                        endLine: 1,
+                      },
+                    ],
+                requirements: isPosting
+                  ? [
+                      {
+                        skillId: 'python',
+                        importance: 'required',
+                        startLine: 1,
+                        endLine: 1,
+                      },
+                    ]
+                  : [],
+                questions: [],
+              }),
+            },
+          },
+        ],
+      });
+    };
+    const result = await profile('local-success', {
+      mode: 'ai',
+      consent: false,
+    });
+    assert.equal(result.analysis.engine.provider, 'local');
+    assert.equal(result.analysis.engine.model, 'synthetic-local');
+    assert.equal(calls, 2);
+    assert.equal(result.analysis.requirements[0].skillId, 'python');
+    assert.deepEqual(
+      result.analysis.skills.map((s) => s.skillId),
+      ['python'],
+    );
+    assert.doesNotMatch(result.analysis.summary, /공고를 지원자/);
+    const state = await json(await get('local-success'));
+    assert.equal(state.ai.provider, 'local');
+    assert.equal(state.ai.configured, true);
+    assert.doesNotMatch(JSON.stringify(state), /must-not-be-transmitted/);
+  } finally {
+    globalThis.fetch = original;
+    process.env.CAREERFLOW_AI_PROVIDER = 'openai';
+    delete process.env.CAREERFLOW_LOCAL_MODEL;
+    delete process.env.CAREERFLOW_LOCAL_URL;
+    delete process.env.OPENAI_API_KEY;
+  }
+});
+
+test('로컬 모델의 외부 주소, 잘린 출력, 가짜 근거와 연결 실패는 저장하지 않고 외부로 재시도하지 않는다', async () => {
+  const original = globalThis.fetch;
+  process.env.CAREERFLOW_AI_PROVIDER = 'local';
+  process.env.CAREERFLOW_LOCAL_MODEL = 'models/synthetic-local';
+  process.env.OPENAI_API_KEY = 'unused-external-key';
+  try {
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      throw new Error('PRIVATE_LOCAL_DETAILS');
+    };
+    for (const url of [
+      'https://example.test',
+      'http://localhost:8089',
+      'http://127.0.0.1:8089/remote',
+      'http://127.0.0.1:8089/?key=secret',
+    ]) {
+      process.env.CAREERFLOW_LOCAL_URL = url;
+      assert.equal(
+        (
+          await post(
+            'bad-local-address',
+            profileBody({ mode: 'ai', consent: true }),
+          )
+        ).status,
+        503,
+      );
+    }
+    assert.equal(calls, 0);
+    process.env.CAREERFLOW_LOCAL_URL = 'http://127.0.0.1:8089';
+    let failure = await post('local-connect-fail', profileBody({ mode: 'ai' }));
+    assert.equal(failure.status, 502);
+    assert.doesNotMatch(await failure.text(), /PRIVATE_LOCAL_DETAILS/);
+    assert.equal(calls, 1);
+    assert.equal((await json(await get('local-connect-fail'))).profile, null);
+    assert.equal(
+      (
+        await db.one(
+          'SELECT n FROM career_ai_quota WHERE user_id=?',
+          'local-connect-fail',
+        )
+      ).n,
+      0,
+    );
+    for (const [id, finish, content] of [
+      ['local-truncated', 'length', '{}'],
+      ['local-invalid-json', 'stop', 'not JSON'],
+      [
+        'local-fake-quote',
+        'stop',
+        JSON.stringify({
+          summary: '가짜 근거',
+          skills: [
+            {
+              skillId: 'python',
+              level: 'applied',
+              startLine: 999,
+              endLine: 999,
+            },
+          ],
+          requirements: [],
+          questions: [],
+        }),
+      ],
+    ]) {
+      globalThis.fetch = async () => {
+        calls++;
+        return Response.json({
+          choices: [{ finish_reason: finish, message: { content } }],
+        });
+      };
+      const countBefore = calls;
+      failure = await post(id, profileBody({ mode: 'ai' }));
+      assert.equal(failure.status, 502);
+      assert.equal(calls, countBefore + 1);
+      assert.equal((await json(await get(id))).profile, null);
+    }
+  } finally {
+    globalThis.fetch = original;
+    process.env.CAREERFLOW_AI_PROVIDER = 'openai';
+    delete process.env.CAREERFLOW_LOCAL_MODEL;
+    delete process.env.CAREERFLOW_LOCAL_URL;
+    delete process.env.OPENAI_API_KEY;
+  }
+});
+
+test('로컬 모델이 선택한 줄 범위는 원문 그대로 복원하고 잘못된 범위를 거부한다', () => {
+  const input = api.profileInput(
+    profileBody({
+      resumeText:
+        'Python으로 검색 기능을 구현했습니다.\n\n원문을 확인하며\n테스트를 작성했습니다.',
+    }),
+  );
+  const raw = {
+    summary: '원문 범위 검사',
+    skills: [
+      { skillId: 'testing', level: 'applied', startLine: 2, endLine: 3 },
+    ],
+    requirements: [],
+    questions: [],
+  };
+  assert.equal(
+    api.resolveLocalEvidence(raw, input).skills[0].quote,
+    '원문을 확인하며\n테스트를 작성했습니다.',
+  );
+  for (const [startLine, endLine] of [
+    [0, 1],
+    [2, 1],
+    [1, 9],
+    ['1', 1],
+    [1.1, 2],
+  ])
+    assert.throws(
+      () =>
+        api.resolveLocalEvidence(
+          { ...raw, skills: [{ ...raw.skills[0], startLine, endLine }] },
+          input,
+        ),
+      /원문 범위/,
+    );
+  const long = '가'.repeat(500);
+  const lines = api.sourceLines(long);
+  assert.equal(lines.length, 3);
+  assert.equal(lines.map((s) => s.text).join(''), long);
+  assert.deepEqual(api.sourceLines('\n\n'), []);
 });

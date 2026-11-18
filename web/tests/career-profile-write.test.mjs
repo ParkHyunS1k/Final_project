@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { setupTestDb } from './helpers/pg-db.mjs';
 
 process.env.AUTH_DEV_HEADERS = '1';
+process.env.CAREERFLOW_AI_PROVIDER = 'openai';
 process.env.OPENAI_API_KEY = 'synthetic-test-key';
 const db = await setupTestDb();
 const dir = mkdtempSync(join(tmpdir(), 'career-write-test-'));

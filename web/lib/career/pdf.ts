@@ -1,3 +1,4 @@
+import { pdfPageText } from './pdf-text';
 // Client-only extraction. The original PDF never leaves the browser.
 export async function resumeFileText(file: File) {
   if (file.size > 5 * 1024 * 1024)
@@ -40,12 +41,7 @@ export async function resumeFileText(file: File) {
     for (let i = 1; i <= document.numPages; i++) {
       const page = await document.getPage(i);
       const content = await page.getTextContent();
-      text +=
-        content.items
-          .map((item) =>
-            'str' in item ? item.str + (item.hasEOL ? '\n' : ' ') : '',
-          )
-          .join('') + '\n';
+      text += pdfPageText(content.items) + '\n';
       page.cleanup();
       if (text.length > 40000)
         throw new Error(

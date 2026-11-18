@@ -1,0 +1,25 @@
+# Run from local-llm. Reviewed, case-separated data is required before training.
+model: models/qwen3-4b-instruct-4bit
+data: data/pilot-lora-20261104/chat
+train: true
+fine_tune_type: lora
+seed: 42
+num_layers: 4
+batch_size: 1
+iters: 100
+learning_rate: 0.00005
+max_seq_length: 2048
+mask_prompt: true
+grad_checkpoint: true
+steps_per_report: 5
+steps_per_eval: 20
+val_batches: -1
+save_every: 20
+adapter_path: adapters/resume-pilot-20261104-json
+completion_format: plain-json-v1
+report_to: null
+lora_parameters:
+  keys: [self_attn.q_proj, self_attn.v_proj]
+  rank: 8
+  scale: 20.0
+  dropout: 0.0

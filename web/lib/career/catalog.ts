@@ -29,7 +29,7 @@ export const SKILLS = [
   {
     id: 'evaluation',
     name: '품질 평가',
-    aliases: ['품질 평가', '검색 평가', '평가셋', '모델 평가'],
+    aliases: ['품질 평가', '검색 평가', '평가셋', '모델 평가', 'LLM 출력 평가'],
   },
   { id: 'docker', name: 'Docker', aliases: ['Docker', '도커', '컨테이너'] },
   {
@@ -71,7 +71,7 @@ export const SKILLS = [
   {
     id: 'planning',
     name: '요구사항·기획',
-    aliases: ['요구사항', '서비스 기획', '기능 명세', '제품 기획'],
+    aliases: ['요구사항', '서비스 기획', '기능 기획', '기능 명세', '제품 기획'],
   },
   {
     id: 'documentation',

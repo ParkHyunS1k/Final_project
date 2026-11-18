@@ -1,10 +1,114 @@
-# ProjectMate 로컬 LLM 학습 준비
+# ProjectMate 로컬 LLM 실행과 어댑터 학습
 
-2026-10-30 현재 **문서 조사, 로컬 OCR, 첫 정답 후보 30개 및 검증·변환 도구까지 준비**했다. 사용자가 첫 목표를 ‘이력서·경험에서 역량과 근거 추출’로 확정했다. 모델 다운로드·파인튜닝·앱의 외부 API 교체는 아직 실행하지 않았다. 기존 앱을 실행하면 기존 모델 설정이 적용된다.
+## 2026-11-05: 사람별 문맥을 연결한 재학습
+
+`context-lora-20261104` 실험은 기존 10개 사례의 관련 기술 문맥을 PDF 22쪽에서 모아 사례당 하나의 입력으로 구성했다. 이력서 전체나 사례집 전체를 학습한 것은 아니다. 사용 기술, 본인 역할, 실제 수행과 향후 계획을 구분하는 가상 예제 10개를 추가했다. 총 20개 중 학습 13개, 검증 2개, 평가 5개이며 기존 사례의 분할을 유지했다. 개인정보가 있는 머리말과 관련 없는 문단을 제외했고 원문 쪽수, OCR 위치와 보정 내용을 로컬에 보존했다. 정답은 Codex가 검토했으며 독립적인 사람의 검수를 완료한 것은 아니다.
+
+새 실험 형식 `person-context-technologies-v2`는 `skills`와 별도로 `technologies`를 보존한다. 본인이 수행한 프로젝트의 사용 기술 목록은 사용 경험으로 인정하며, `pandas`를 일반 역량명으로 대체하지 않는다. 명시적인 동료 작업, 부정문, 미래 계획과 학습 문맥은 따로 판단한다. 원문 기술명을 근거 범위에서 확인하고, 같은 사례나 가상 예제 그룹이 여러 분할에 들어가면 내보내기를 거부한다.
+
+같은 고정 Qwen3 4B 4bit 모델에서 80단계 LoRA 학습을 완료했다. 마지막 4개 층의 q_proj와 v_proj, rank 8, 학습률 0.00005, batch 1, 정답 토큰만 학습했다. 최대 입력과 정답 길이는 3,216토큰이며 잘림 없이 처리했다. 관측된 최대 MLX 메모리는 약 5.45GB다. 4개 체크포인트 중 검증 손실로 40단계를 선택했다. 기본 모델 손실 0.7684, 선택 어댑터 손실 0.3829이며 손실은 정확도가 아니다. 기본 가중치 해시는 변경되지 않았다.
+
+| 같은 평가 5개 | 기본 모델 + 새 프롬프트 | 새 어댑터 + 새 프롬프트 |
+| --- | ---: | ---: |
+| 엄격한 출력 및 근거 검사 통과 | 4 | 4 |
+| 역량과 수준 집합 전체 일치 | 2 | 1 |
+| 기술과 수준 집합 전체 일치 | 2 | 3 |
+| 역량 micro F1 | 0.667 | 0.727 |
+| 기술 micro F1 | 0.491 | 0.556 |
+
+실제 원문 평가 2개는 이전 실험에 노출된 사례의 문맥을 확장한 회귀 검사다. 가상 평가 3개도 독립적인 실제 사용자 평가를 대체하지 않는다. 정답 목록에 ELB가 빠진 사례 등 검수 한계도 별도 기록했다. 평가 결과를 보고 정답, 체크포인트나 학습 설정을 바꾸지 않았다. 학습에 포함한 사용자의 Python, pandas, SQL 예제는 세 기술을 모두 applied로 출력했으며 이 재현은 평가 점수에 합산하지 않았다.
+
+**새 어댑터는 웹에 적용하지 않았다.** 원문에 없는 Python, SQL, Docker를 추론하거나 미래 WebSocket 학습 계획을 이미 학습한 것으로 처리하는 오류가 남았다. 또한 v2는 웹의 기존 응답 형식과 다르므로 `CAREERFLOW_LOCAL_ADAPTER`에 바로 지정해서는 안 된다. 웹은 기존 기본 모델 설정을 유지한다. 데이터, 어댑터, 출력과 보고서는 Git 제외 경로에만 보관한다.
+
+재현 도구는 `scripts/context_dataset.py`, `scripts/context_contract.py`, `examples/lora-context.yaml`이다. 기존 v1 실행기도 유지한다. `select_adapter.py`는 학습 설정의 최대 길이를 사용하며 검증 문장을 자르지 않는다. 데이터 디렉터리가 준비된 로컬 환경에서 다음 명령을 사용하되, 기존 출력은 덮어쓰지 않으므로 새 실험에서는 설정과 출력 경로를 변경한다.
+
+```sh
+python3 scripts/context_dataset.py data/context-lora-20261104/annotations.jsonl data/context-lora-20261104/vocabulary.json data/context-lora-20261104/chat
+.venv/bin/python scripts/train_adapter.py --config examples/lora-context.yaml
+.venv/bin/python scripts/select_adapter.py --data data/context-lora-20261104/chat --model models/qwen3-4b-instruct-4bit --checkpoints adapters/resume-context-20261104 --output adapters/resume-context-20261104-selected
+.venv/bin/python scripts/evaluate_adapter.py --data data/context-lora-20261104/chat --model models/qwen3-4b-instruct-4bit --adapter adapters/resume-context-20261104-selected --output runs/resume-context-20261104/adapter-test --max-tokens 2400
+```
+
+보고서: `runs/resume-context-20261104/report.html`. 데이터: `data/context-lora-20261104/`. 선택 가중치: `adapters/resume-context-20261104-selected/`.
+
+## 이전 실험 기록
+
+2026-11-04 업데이트: **Qwen3 4B Instruct의 MLX 4bit 모델로 첫 QLoRA 학습과 실제 생성 평가를 완료했다.** 두 PDF의 기술 발췌 30개를 검수해 학습 21개, 검증 3개, 회귀 평가 6개로 나눴다. 대화 템플릿의 정답 형식 문제를 수정한 뒤 100스텝을 다시 학습했고, 검증 손실로 60스텝 어댑터를 선택했다. 약 1.31MB의 어댑터는 실험용으로 보관한다.
+
+학습 모델의 회귀 응답 6개는 모두 앱 검증을 통과했지만, 앱 처리 후 역량과 경험 구분의 집합이 정답과 정확히 일치한 것은 1개다. 미래 계획의 수행 경험 오인, API 사용과 개발의 혼동, 중복 역량 및 근거 범위 오류가 남았다. 개인 이력서 전체에서도 API 개발 경험을 과대 해석했다. **앱 기본값은 학습 전 로컬 모델로 유지했다.** 기본 모델도 같은 종류의 오류가 있어 결과는 검토가 필요한 초안이다. 외부 분석은 `CAREERFLOW_AI_PROVIDER=openai`를 명시할 때만 선택한다.
+
+실험 기록은 Git에서 제외되는 `runs/resume-pilot-20261104/`, 선택한 어댑터는 `adapters/resume-pilot-20261104-json-selected/`에 있다. 평가 6개는 첫 형식 오류 진단에서 확인했으므로 새로운 비공개 평가 세트로 간주하지 않는다. 첫 실험 실패와 수정 후 실험 기록을 모두 보존했으며, 이 결과만으로 일반 성능 향상을 주장하지 않는다.
+
+## 로컬 모델 실행
+
+Python 3.12 가상환경에 설치한 버전은 MLX-LM 0.32.2, MLX 0.32.4, Transformers 5.22.1이다. 기본 가중치의 고정 리비전은 `50d427756c6b1b2fe0c0a10f67fbda1fc8e82c1b`이다. 모델 가중치는 약 2.3GB다. 아래 명령은 `local-llm/`에서 실행한다.
+
+```sh
+uv venv --python 3.12 .venv
+uv pip install --python .venv/bin/python -r requirements-mlx.txt
+.venv/bin/python scripts/download_model.py
+.venv/bin/python scripts/serve_local.py
+```
+
+이미 설치한 환경에서 실행할 때는 마지막 명령만 사용한다. 모델 서버는 `127.0.0.1:8089`에서만 열고 오프라인 모드로 실행한다. 다운로드 명령은 공개 모델 파일만 받으며 문서를 업로드하지 않는다. 원문이나 전체 응답을 로그에 기록하지 않도록 DEBUG 로그를 사용하지 않는다.
+
+별도 터미널의 `web/`에서 다음처럼 실행한다. 기존 데이터가 있는 로컬 DB를 사용하려면 `DATABASE_PATH`를 그 경로로 맞춘다. 그 DB를 사용하는 서버가 있다면 먼저 종료한다.
+
+```sh
+DATABASE_URL= DATABASE_PATH=.data/career-local-llm npm run db:migrate
+DATABASE_URL= DATABASE_PATH=.data/career-local-llm AUTH_DEV_HEADERS=1 \
+  CAREERFLOW_AI_PROVIDER=local \
+  CAREERFLOW_LOCAL_MODEL=models/qwen3-4b-instruct-4bit \
+  CAREERFLOW_LOCAL_URL=http://127.0.0.1:8089 \
+  npm run dev -- --webpack --port 3286
+```
+
+로컬 개발 계정으로 화면을 확인하려면 다른 터미널의 `web/`에서 `node scripts/dev-as.mjs 3287 local-llm-user 로컬모델검증 3286`을 실행하고 `http://127.0.0.1:3287/app?tab=profile`로 접속한다. 개발 신원 헤더는 운영에서 사용할 수 없다. Vercel의 localhost는 사용자 Mac이 아니므로 이 구성을 그대로 운영 배포에 연결할 수 없다.
+
+앱은 이력서와 공고를 별도 요청으로 분석하고 각 원문 줄 번호를 전달한다. 공고의 응답은 공고 요건에만 반영하며 개인 역량으로 저장하지 않는다. 모델이 역량, 경험 구분과 근거의 시작 및 끝 번호를 선택하면 앱이 해당 원문 구간을 복원해 검사한다. 기술명 키워드로 로컬 모델의 답을 대체하지 않는다. 잘못된 범위, 잘린 JSON, 미등록 역량 ID는 저장하지 않으며 외부 API로 자동 재시도하지 않는다. 원문 일치는 의미적 판단의 정확성을 보장하지 않는다.
+
+현재 입력 상한은 이력서와 공고를 합해 16,000자, 모델 응답 제한은 180초다. 프로필 쓰기 선점은 300초로 유지해 추론 중 중복 저장을 막는다. 로컬 모델에도 동시 저장 보호와 하루 분석 한도를 적용한다. 실패한 분석은 한도를 돌려준다. 원문과 분석 결과는 개인 프로필에 저장하고 사용한 제공자와 모델명을 함께 표시한다.
+
+2026-11-04 실제 개발 사례 한 건에서 브라우저 분석, 로컬 모델 응답, 프로필 저장, 새로고침 후 유지와 추천 연결을 확인했다. 그러나 기술 목록을 직접 구현 경험으로 과대 해석하거나 공고의 필수 및 우대 구분을 잘못 판단하는 오류가 남아 있다. 이 사례는 프롬프트 조정에 사용했으므로 독립 평가 세트가 아니다. 출력은 분석 초안으로 표시하며, 구조 검사를 통과했다는 사실을 의미적 정확도나 채용 적합성 검증으로 해석하지 않는다.
+
+## 검수 데이터로 학습 재현
+
+기존 초안은 그대로 보존한다. 2026-11-04 검수본은 두 원본 PDF의 해시와 10쪽의 이미지를 대조하고, 기술 발췌 30개를 사례 단위로 학습 21개, 검증 3개, 평가 6개로 나눴다. 학습에는 두 PDF의 사례가 모두 포함된다. 이름과 연락처를 포함하는 개인 이력서 전체는 학습에 넣지 않는다. 정답 검수자는 Codex이며 사람의 독립 검수를 받은 정답은 아니다. 원본의 이름이 가려져 있어 동일인 여부를 완전히 입증할 수 없다는 제한도 검수 기록에 남겼다.
+
+현재 앱은 `startLine`, `endLine` 형식을 사용한다. 과거 `dataset_tool.py export`의 직접 인용 형식 대신 아래 내보내기를 사용한다. 이 명령은 기존 검수 조건, 분할과 중복 검사를 통과해야 하며 실제 앱의 프롬프트, 역량 목록과 줄 분리 함수를 재사용한다. 출력 폴더가 있으면 새 이름을 사용한다.
+
+```sh
+node scripts/app_dataset.mjs \
+  data/pilot-lora-20261104/annotations.reviewed.jsonl \
+  data/pilot-lora-20261104/audit.json \
+  data/pilot-lora-20261104/chat
+
+.venv/bin/python scripts/train_adapter.py --config examples/lora-pilot.yaml
+
+.venv/bin/python scripts/select_adapter.py \
+  --data data/pilot-lora-20261104/chat \
+  --model models/qwen3-4b-instruct-4bit \
+  --checkpoints adapters/resume-pilot-20261104-json \
+  --output adapters/resume-pilot-20261104-json-selected
+
+.venv/bin/python scripts/evaluate_adapter.py \
+  --data data/pilot-lora-20261104/chat \
+  --model models/qwen3-4b-instruct-4bit \
+  --adapter adapters/resume-pilot-20261104-json-selected \
+  --split test --output runs/pilot-new-evaluation
+```
+
+이 데이터와 가중치는 Git에서 제외되므로 새 체크아웃에는 없다. 위 명령은 검수본이 있는 로컬 환경을 기준으로 한다. 다시 학습할 때는 설정의 `adapter_path`와 출력 폴더를 새 이름으로 바꾼다. 선택기는 검증 데이터만 읽으며 평가 정답으로 체크포인트를 고르지 않는다. 평가기의 엄격한 JSON 준수, 역량과 경험 구분의 일치 및 근거 줄 범위 점수는 요약 내용의 정확성이나 채용 적합도를 측정하지 않는다.
+
+고정한 MLX 배포본의 완성 대화 템플릿이 정답 앞에 빈 생각 블록을 붙이는 것을 확인했다. [Qwen 공식 모델 카드](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507)는 이 Instruct 모델을 생각 블록을 출력하지 않는 모델로 설명한다. `train_adapter.py`는 실제 추론과 같은 입력 토큰 뒤에 정답 JSON과 종료 토큰만 붙이고, 정답 토큰만 손실에 반영한다. 이 학습은 기본 가중치를 고정한 4bit QLoRA이며 마지막 4개 층의 q/v 투영에 rank 8 어댑터를 추가한다.
+
+어댑터를 앱에서 시험할 때는 기본 모델 서버를 실행한 상태에서 앱 서버에 `CAREERFLOW_LOCAL_ADAPTER`를 어댑터 폴더의 절대 경로로 설정한다. `CAREERFLOW_LOCAL_MODEL`은 위 실행 예시처럼 실제 모델 경로를 사용한다. 앱은 MLX 요청의 `adapters` 필드로 이력서 분석에만 어댑터를 선택하고, 공고 분석은 기본 모델로 요청한다. 결과에는 어댑터 폴더 이름을 함께 기록한다. 이 옵션을 비우면 기존 기본 모델을 사용한다.
+
+MLX-LM 0.32.2에서 서버의 `--adapter-path` 옵션은 요청 모델이 `default_model`일 때만 자동 연결된다. 따라서 서버 옵션만 바꾸고 앱에 실제 모델 경로를 보내면 어댑터가 빠질 수 있다. 앱에서는 명시적인 `CAREERFLOW_LOCAL_ADAPTER` 설정을 사용한다. 실험 어댑터의 생성, 선택과 앱 기본값 채택은 서로 다른 단계다.
 
 첫 실험의 목표는 이력서·경험에서 **역량, 수행/학습/언급 여부, 원문 근거**를 추출하는 것이다. 목표 공고와의 비교 및 프로젝트·역할 추천은 추출 결과를 기존 앱의 규칙과 연결한다. PDF에 없는 프로젝트 적합도 정답이나 합격 확률을 만들어 학습하지 않는다.
 
-## 확인한 환경과 자료
+## 2026-10-30 준비 당시의 환경과 자료
 
 | 항목 | 확인 결과 |
 | --- | --- |
@@ -77,7 +181,7 @@ PDF 원문만 넣는 학습은 여기서 원하는 입력→역량 추출 동작
 
 동일 페이지의 발췌는 같은 임시 그룹으로 묶었다. 이는 사람별 중복 검수가 끝난 10명이라는 뜻이 아니다. 인접 페이지의 사례 경계, 두 문서 간 동일인·유사 사례를 확인해 `leakage_group_id`를 확정해야 한다. 확정 전에는 학습/검증/평가 분할을 하지 않았다.
 
-현재 `review.source_checked=true`는 **Codex가 페이지 이미지와 대조했다**는 기록이다. 사용자 검수를 받았다는 뜻이 아니다. `review.labels=draft`, `review.privacy=excerpt_minimized_pending_review`, `review.identity_groups=unverified`, `training_eligible=false`로 남겨뒀다. 스크립트가 이 상태를 임의로 승인 상태로 바꾸지 않는다.
+2026-10-30 초안의 `review.source_checked=true`는 **Codex가 페이지 이미지와 대조했다**는 기록이다. 사용자 검수를 받았다는 뜻이 아니다. 이 초안 파일은 `review.labels=draft`, `review.privacy=excerpt_minimized_pending_review`, `review.identity_groups=unverified`, `training_eligible=false`로 보존했다. 2026-11-04에는 원문 재대조와 정답 수정, 개인정보 및 사례 검토를 거친 별도 검수본을 만들었다. 사람이 승인했다는 의미로 상태를 바꾸지 않는다.
 
 다음 명령도 `local-llm/`에서 실행한다. Python 표준 라이브러리만 사용하는 검사 도구다.
 
@@ -118,26 +222,14 @@ swift -module-cache-path /private/tmp/projectmate-swift-cache \
 
 `audit_pdfs.py`는 기존 문자 레이어를 읽어 페이지별 JSONL, 요약 `audit.json`, IT 후보 큐를 만든다. 원문 SHA-256과 PDF 페이지를 보존한다. `ocr_page.swift`는 한 페이지를 macOS Vision으로 OCR한다. 두 스크립트에는 외부 LLM 호출이 없다. Vision은 제한된 샌드박스에서 실패했으며 일반 macOS 실행 권한에서는 성공했다.
 
-첫 모델 후보는 [Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507)이다. MLX 형식의 4bit 가중치를 준비한 뒤 실제 메모리·한국어 추출 품질을 측정해서 확정한다. M3 Pro 18GB에서의 학습 성공이나 속도는 아직 측정하지 않았다.
+현재 모델은 [Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507)의 MLX 4bit 배포본이다. M3 Pro 18GB에서 실제 실행과 학습 기록을 `runs/`에 보관한다. 기본 모델 실행 성공과 학습 후 한국어 추출 품질 향상은 구분한다.
 
 학습 환경은 [MLX-LM 공식 LoRA 문서](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/LORA.md)의 `mlx-lm[train]`을 별도 가상환경에 설치하고, 검증된 버전을 고정한다. 모델·패키지 다운로드에는 인터넷이 필요하다. 문서 전송은 필요하지 않으며 학습·추론은 다운로드가 완료된 로컬 파일로 실행하도록 구성한다. 외부 실험 추적 서비스는 사용하지 않는다.
 
-다음은 **모델 준비 및 검수된 JSONL 생성 후** 사용할 시험 명령이다. 현재 경로에는 해당 모델·학습 파일이 없으므로 지금 바로 실행할 수 있는 상태는 아니다. 입력은 출력까지 포함한 토큰 길이를 확인해 잘리지 않게 준비한다.
-
-```sh
-.venv/bin/mlx_lm.lora \
-  --model models/qwen3-4b-instruct-4bit \
-  --train --data data/approved-v1 \
-  --adapter-path adapters/smoke-v1 \
-  --mask-prompt --batch-size 1 --num-layers 8 \
-  --max-seq-length 1024 --grad-checkpoint \
-  --learning-rate 1e-5 --iters 20
-```
-
-이 20스텝은 학습이 돌아가는지 확인하는 용도다. 품질을 입증하지 않는다. 다음 단계에서 실제 모델 저장 위치·데이터·패키지 버전·난수 시드·설정을 실행 기록에 고정한다. MLX 어댑터는 먼저 MLX에서 직접 검증하며 Ollama에 그대로 가져올 수 있다고 가정하지 않는다.
+현재 재현 명령은 위의 `train_adapter.py` 절차를 따른다. 이 실행기는 정답 토큰의 왕복 일치와 길이를 확인하고, 20스텝 시점에는 검증 사례로 실제 JSON 생성도 점검한다. 단순한 손실 감소로 출력 형식이나 의미적 정확성을 통과 처리하지 않는다. MLX 어댑터는 먼저 MLX에서 직접 검증하며 Ollama에 그대로 가져올 수 있다고 가정하지 않는다.
 
 ## 로컬 데이터 보관
 
 원본 PDF는 Downloads에 그대로 두었다. 추출문·검수 데이터는 `data/` 아래에 있고, 생성 디렉터리는 소유자만 접근(700), 파일은 소유자만 읽기/쓰기(600)로 만들었다. PDF·데이터·모델·어댑터·실행 기록·환경 파일은 이 폴더의 `.gitignore`로 제외한다.
 
-Git 제외는 암호화나 모든 유출 방지를 뜻하지 않는다. 일반 커밋 대상에서 빠지는 것을 확인했으며 강제 추가나 별도 공유는 보호하지 않는다. 정규식으로 표시한 연락처 후보만으로 비식별화가 끝났다고 판단하지 않는다. 현재 추출 데이터의 `training_eligible`은 모두 `false`다.
+Git 제외는 암호화나 모든 유출 방지를 뜻하지 않는다. 일반 커밋 대상에서 빠지는 것을 확인했으며 강제 추가나 별도 공유는 보호하지 않는다. 정규식으로 표시한 연락처 후보만으로 비식별화가 끝났다고 판단하지 않는다. 검수본, 학습 어댑터와 실행 기록도 모두 Git 제외 경로에 보관한다.

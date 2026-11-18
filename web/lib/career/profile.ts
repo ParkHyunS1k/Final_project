@@ -28,8 +28,36 @@ export type Requirement = {
   quote: string;
   importance: 'required' | 'preferred' | 'reference';
 };
+export type Technology = {
+  name: string;
+  reviewed?: boolean;
+  state:
+    | 'used'
+    | 'studied'
+    | 'listed'
+    | 'planned'
+    | 'other'
+    | 'denied'
+    | 'unclear';
+  mentions: { quote: string; text: string }[];
+};
+export type IntroResult = {
+  provider: 'openai' | 'anthropic' | 'google';
+  model: string;
+  fingerprint: string;
+  lines: { text: string; evidence: string[] }[];
+  latencyMs: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  createdAt: string;
+};
 export type Analysis = {
+  technologies?: Technology[];
+  introductions?: IntroResult[];
+  selectedIntroduction?: IntroResult['provider'];
   mode: 'basic' | 'ai';
+  reviewedAt?: string;
+  engine?: { provider: 'local' | 'openai'; model: string; adapter?: string };
   summary: string;
   skills: SkillEvidence[];
   requirements: Requirement[];
@@ -98,62 +126,211 @@ const NEGATIVE =
   /경험(?:이|은)?\s*(?:없|부족)|해본 적(?:이)?\s*없|사용하지\s*않|못했|미경험|no experience|never used/i;
 const FUTURE = /예정|계획|배우고\s*싶|해보고\s*싶|want to|plan to/i;
 const APPLIED =
-  /구현|개발|구축|분석했|분석한|배포했|작성했|설계했|설계한|구성했|수행|만들|built|implemented|developed|deployed/i;
-const LEARNING = /학습|수강|실습|공부|튜토리얼|learn|course|tutorial/i;
+  /(?:구현|개발|구축|분석|배포|작성|설계|구성|수행|기획)(?:했|한|하고|하여|함)|맡았|만들었|만든|built|implemented|developed|deployed/i;
+const LEARNING = /학습|수강|실습|공부|이수|튜토리얼|learn|course|tutorial/i;
+const OTHER_WORK = /팀원|동료|다른\s*(?:개발자|사람)|teammate|colleague/i;
+const AI_WRITTEN =
+  /코드[\s\S]{0,20}AI[\s\S]{0,8}(?:작성|생성)|AI[\s\S]{0,8}(?:작성|생성)[\s\S]{0,12}코드/i;
+function evidenceQuestions(skills: SkillEvidence[], aiWritten: boolean) {
+  return [
+    ...(aiWritten
+      ? [
+          'AI가 작성한 코드 중 직접 이해하고 수정하거나 검증한 부분은 무엇인가요?',
+        ]
+      : []),
+    ...skills
+      .filter((s) => s.level === 'mentioned')
+      .map(
+        (s) =>
+          `${skillName(s.skillId)} 관련 업무에서 직접 수행한 내용과 결과물이 있나요?`,
+      ),
+  ].slice(0, 3);
+}
+
+function postingRequirements(posting: string): Requirement[] {
+  const lines = posting
+    .split(/\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const requiredHeading =
+    /^(?:자격\s*요건|지원\s*자격|필수\s*(?:요건|사항)|requirements|required qualifications)\s*[:：]?$/i;
+  const preferredHeading =
+    /^(?:우대\s*(?:사항|조건)|preferred(?: qualifications)?)\s*[:：]?$/i;
+  const structured = lines.some(
+    (s) => requiredHeading.test(s) || preferredHeading.test(s),
+  );
+  let section: Requirement['importance'] | null = structured
+    ? null
+    : 'required';
+  const found = new Map<SkillId, Requirement>();
+  for (const quote of lines) {
+    if (requiredHeading.test(quote)) {
+      section = 'required';
+      continue;
+    }
+    if (preferredHeading.test(quote)) {
+      section = 'preferred';
+      continue;
+    }
+    if (
+      /^(?:주요\s*업무|담당\s*업무|혜택.*|복리후생|근무\s*조건|채용\s*절차|회사\s*소개)$/.test(
+        quote,
+      )
+    ) {
+      section = null;
+      continue;
+    }
+    if (!section || /불필요|필요하지|not required/i.test(quote)) continue;
+    const importance = /우대|preferred/i.test(quote) ? 'preferred' : section;
+    for (const skill of SKILLS) {
+      if (!hasAlias(quote, skill.aliases)) continue;
+      const prior = found.get(skill.id);
+      if (
+        !prior ||
+        (prior.importance === 'preferred' && importance === 'required')
+      )
+        found.set(skill.id, { skillId: skill.id, quote, importance });
+    }
+  }
+  return [...found.values()];
+}
 export function basicAnalysis(input: ProfileInput): Analysis {
   const lines = input.resumeText
     .split(/\n+/)
     .map((s) => s.trim())
     .filter(Boolean);
   const skills: SkillEvidence[] = [];
+  const aiWritten = AI_WRITTEN.test(input.resumeText);
   for (const skill of SKILLS) {
     const hits = lines.filter(
-      (line) =>
-        hasAlias(line, skill.aliases) &&
+      (line, index) =>
+        hasAlias(line.replace(/https?:\/\/\S+/g, ''), skill.aliases) &&
+        !(
+          skill.id === 'git' &&
+          /github\.com\//i.test(line) &&
+          !/(?:협업|브랜치|커밋|리뷰|학습|실습|공부|사용|\bPR\b|\bbranch\b|\bcommit\b)/i.test(
+            line,
+          )
+        ) &&
+        !/(?:인턴|개발자|엔지니어).{0,30}지원/.test(line) &&
+        !OTHER_WORK.test(line) &&
+        !(
+          index > 0 &&
+          !/[.!?]$/.test(lines[index - 1]) &&
+          OTHER_WORK.test(lines[index - 1])
+        ) &&
         !NEGATIVE.test(line) &&
-        !FUTURE.test(line),
+        !FUTURE.test(line.replace(/(?:종료|수료|졸업)\s*예정/g, '')),
     );
-    const quote = hits.find((s) => APPLIED.test(s)) ?? hits[0];
+    const canApply =
+      !aiWritten ||
+      ['planning', 'research', 'documentation'].includes(skill.id);
+    const quote =
+      (canApply ? hits.find((s) => APPLIED.test(s)) : undefined) ??
+      hits.find((s) => LEARNING.test(s)) ??
+      hits[0];
     if (quote)
       skills.push({
         skillId: skill.id,
         quote,
         source: 'resume',
-        level: APPLIED.test(quote)
-          ? 'applied'
-          : LEARNING.test(quote)
-            ? 'learning'
-            : 'mentioned',
+        level:
+          APPLIED.test(quote) && canApply
+            ? 'applied'
+            : LEARNING.test(quote)
+              ? 'learning'
+              : 'mentioned',
       });
   }
-  const requirements: Requirement[] = [];
-  for (const skill of SKILLS) {
-    const quote = input.targetPosting
-      .split(/\n+/)
-      .find(
-        (s) =>
-          hasAlias(s, skill.aliases) &&
-          !/불필요|필요하지|not required/i.test(s),
-      );
-    if (quote)
-      requirements.push({
-        skillId: skill.id,
-        quote,
-        importance: /우대|preferred/i.test(quote) ? 'preferred' : 'required',
-      });
-  }
+  const requirements = postingRequirements(input.targetPosting);
   return {
     mode: 'basic',
     skills,
     requirements,
     summary:
       '원문 표현을 기준으로 찾은 경험입니다. 기본 추출은 AI 숙련도 평가가 아니며, 실제 담당 범위는 확인이 필요합니다.',
-    questions: skills
-      .filter((s) => s.level === 'mentioned')
-      .slice(0, 3)
-      .map(
-        (s) => `${skillName(s.skillId)}를 직접 수행한 업무와 결과물이 있나요?`,
-      ),
+    questions: evidenceQuestions(skills, aiWritten),
+  };
+}
+
+// Corrections use the saved source and never accept project evidence or model output as proof.
+export function reviewAnalysis(raw: unknown, profile: Profile): Analysis {
+  if (!raw || typeof raw !== 'object')
+    throw new CareerError('검토 내용을 확인해주세요.');
+  const value = raw as Record<string, unknown>;
+  if (
+    !Array.isArray(value.skills) ||
+    value.skills.length > SKILLS.length ||
+    !Array.isArray(value.requirements) ||
+    value.requirements.length > SKILLS.length
+  )
+    throw new CareerError('검토 항목을 확인해주세요.');
+  const skills: SkillEvidence[] = [];
+  for (const item of value.skills) {
+    if (!item || typeof item !== 'object')
+      throw new CareerError('역량 근거를 확인해주세요.');
+    const s = item as Record<string, unknown>;
+    if (
+      !isSkill(s.skillId) ||
+      skills.some((v) => v.skillId === s.skillId) ||
+      !['applied', 'learning', 'mentioned'].includes(String(s.level)) ||
+      typeof s.quote !== 'string' ||
+      s.quote.trim().length < 3 ||
+      s.quote.length > 2000 ||
+      !profile.resumeText.includes(s.quote) ||
+      (s.source !== undefined && s.source !== 'resume') ||
+      s.sourceId !== undefined
+    )
+      throw new CareerError(
+        '중복 없는 역량과 저장된 이력서의 원문 근거를 선택해주세요.',
+      );
+    if (
+      s.level === 'applied' &&
+      (NEGATIVE.test(s.quote) ||
+        FUTURE.test(s.quote) ||
+        OTHER_WORK.test(s.quote))
+    )
+      throw new CareerError(
+        '미경험, 향후 계획, 다른 사람의 작업은 수행 근거로 저장할 수 없습니다.',
+      );
+    skills.push({
+      skillId: s.skillId,
+      level: s.level as SkillEvidence['level'],
+      quote: s.quote,
+      source: 'resume',
+    });
+  }
+  const requirements: Requirement[] = [];
+  for (const item of value.requirements) {
+    if (!item || typeof item !== 'object')
+      throw new CareerError('공고 근거를 확인해주세요.');
+    const r = item as Record<string, unknown>;
+    if (
+      !isSkill(r.skillId) ||
+      requirements.some((v) => v.skillId === r.skillId) ||
+      !['required', 'preferred'].includes(String(r.importance)) ||
+      typeof r.quote !== 'string' ||
+      r.quote.trim().length < 3 ||
+      r.quote.length > 2000 ||
+      !profile.targetPosting.includes(r.quote)
+    )
+      throw new CareerError(
+        '중복 없는 공고 요건과 저장된 공고의 원문 근거를 선택해주세요.',
+      );
+    requirements.push({
+      skillId: r.skillId,
+      quote: r.quote,
+      importance: r.importance as Requirement['importance'],
+    });
+  }
+  return {
+    ...profile.analysis,
+    skills,
+    requirements,
+    summary:
+      '저장된 원문을 바탕으로 수정한 역량입니다. 이력서의 기재 내용과 실제 담당 범위를 함께 확인해주세요.',
+    questions: evidenceQuestions(skills, AI_WRITTEN.test(profile.resumeText)),
+    reviewedAt: new Date().toISOString(),
   };
 }
 // Validate not only JSON shape, but exact source quotes. Model text never grants a skill by itself.

@@ -2,6 +2,7 @@ import { identity, AuthUnavailable } from '@/lib/auth';
 import { AccessError } from '@/lib/projects';
 import { PolicyError } from '@/lib/sprint-policy';
 import { Conflict } from '@/lib/sprint-store';
+import { reviewTechnologies } from '@/lib/career/focused-model';
 import { SKILLS, ROLES, TARGETS } from '@/lib/career/catalog';
 import {
   CareerError,
@@ -9,8 +10,13 @@ import {
   basicAnalysis,
   gapsFor,
   recommendations,
+  reviewAnalysis,
 } from '@/lib/career/profile';
-import { analyzeWithAI, careerAiConfigured } from '@/lib/career/model';
+import {
+  analyzeWithAI,
+  careerAiConfigured,
+  careerAiInfo,
+} from '@/lib/career/model';
 import {
   claimProfileWrite,
   releaseProfileWrite,
@@ -30,7 +36,7 @@ import {
 } from '@/lib/career/store';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 90;
+export const maxDuration = 240;
 function reply(value: unknown, status = 200) {
   return Response.json(value, {
     status,
@@ -91,6 +97,7 @@ export async function GET(request: Request) {
       roles: ROLES,
       targets: TARGETS,
       aiConfigured: careerAiConfigured(),
+      ai: careerAiInfo(),
       extraSkills: extra,
       gaps: profile ? gapsFor(profile, extra) : [],
       beforeGaps: profile ? gapsFor(profile) : [],
@@ -125,7 +132,7 @@ export async function POST(request: Request) {
       if (b.mode !== 'basic' && b.mode !== 'ai')
         throw new CareerError('분석 방식을 선택해주세요.');
       if (b.mode === 'ai') {
-        if (b.consent !== true)
+        if (careerAiInfo().provider === 'openai' && b.consent !== true)
           throw new CareerError(
             '이력서와 목표 공고를 AI 분석에 보내는 데 동의해주세요.',
           );
@@ -146,6 +153,26 @@ export async function POST(request: Request) {
         return reply({ profile: await saveProfile(claim, input, analysis) });
       } catch (e) {
         await releaseProfileWrite(claim, true);
+        throw e;
+      }
+    }
+    if (b.action === 'reviewProfile' || b.action === 'reviewTechnologies') {
+      if (!Number.isInteger(b.version) || Number(b.version) < 1)
+        throw new CareerError('프로필 버전을 확인해주세요.');
+      const claim = await claimProfileWrite(user.id, Number(b.version), false);
+      try {
+        const profile = await readProfile(user.id);
+        if (!profile || profile.version !== Number(b.version))
+          throw new CareerError('최신 프로필을 불러와 다시 검토해주세요.', 409);
+        const analysis =
+          b.action === 'reviewTechnologies'
+            ? reviewTechnologies(b.changes, profile)
+            : reviewAnalysis(b, profile);
+        return reply({
+          profile: await saveProfile(claim, profileInput(profile), analysis),
+        });
+      } catch (e) {
+        await releaseProfileWrite(claim);
         throw e;
       }
     }

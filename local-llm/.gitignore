@@ -1,14 +1,21 @@
 # PDFs, personal data, model weights, and training outputs stay local.
 data/
-models/
+/models
 adapters/
 runs/
 cache/
 tmp/
-.venv/
+/.venv
 __pycache__/
 *.pyc
 .env*
 *.pdf
 *.safetensors
 *.gguf
+
+/adapters
+
+/data
+/runs
+/cache
+/tmp

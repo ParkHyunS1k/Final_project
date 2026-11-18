@@ -16,6 +16,7 @@ import {
 import { InterestList, TeamDirectory, homeTeamAction } from './team-directory';
 import { PageHeader } from './page-header';
 import { ProjectCreate } from './project-create';
+import { CareerMap } from './career-map';
 import { CareerWorkspace } from './career-workspace';
 import {
   ActivityPanel,
@@ -57,6 +58,7 @@ type Tab =
   | 'jobs'
   | 'activity'
   | 'profile'
+  | 'graph'
   | 'portfolio'
   | 'settings'
   | 'team';
@@ -68,7 +70,8 @@ const TITLES: Record<Tab, string> = {
   work: '내 프로젝트',
   jobs: '공고 찾기',
   activity: '활동',
-  profile: '이력서·역량',
+  profile: '이력서와 소개',
+  graph: '경험 지도',
   portfolio: '경험·포트폴리오',
   settings: '설정',
   team: '팀 역할 추천',
@@ -80,7 +83,7 @@ const MAIN_NAV = [
   { id: 'jobs', icon: BriefcaseBusiness },
   { id: 'activity', icon: UserRound },
 ] as const;
-const PERSONAL: Tab[] = ['activity', 'profile', 'portfolio', 'settings'];
+const PERSONAL: Tab[] = ['activity', 'profile', 'graph', 'portfolio', 'settings'];
 function tabFrom(value: string): Tab {
   // 예전 '경험·성장 기록' 링크는 합친 '경험·포트폴리오'로 연다(2026-11-17).
   if (value === 'experience') return 'portfolio';
@@ -1338,6 +1341,7 @@ export function UnifiedApp({
               />
             </>
           )}
+          {tab === 'graph' && <CareerMap />}
           {tab === 'portfolio' && (
             <>
               {record.id &&
