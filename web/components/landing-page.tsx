@@ -899,7 +899,7 @@ export function LandingPage() {
       <footer className="rl-foot">
         <span>ProjectMate · 혼자서도 함께도, 경험을 만드는 7일</span>
         <span>
-          화면 속 팀·업무·시간은 예시입니다. AI 변경안은 준비 중입니다.
+          화면 속 팀·업무·시간은 예시입니다.
         </span>
       </footer>
     </div>
