@@ -104,7 +104,7 @@ const generation = () => ({
   usage: { inputTokens: 120, outputTokens: 80 },
 });
 
-test('소개는 3문장 한도와 실제 원문 인용을 검사한다', () => {
+test('소개 문장 수와 원문 인용을 검사한다', () => {
   assert.equal(api.validateIntroduction(validOutput, source).length, 1);
   assert.throws(() =>
     api.validateIntroduction(
@@ -414,4 +414,197 @@ test('새 모델로 소개를 다시 생성하면 이전 선택을 자동 승인
   } finally {
     delete process.env.CAREERFLOW_INTRO_OPENAI_MODEL;
   }
+});
+
+test('이력서 제출 한 번으로 LoRA 기술 판정과 한 문장 소개를 같은 버전에 저장한다', async (t) => {
+  const settings = {
+    CAREERFLOW_AI_PROVIDER: 'local',
+    CAREERFLOW_LOCAL_ENGINE: 'focused-lora',
+    CAREERFLOW_LORA_URL: 'http://127.0.0.1:3291',
+    CAREERFLOW_LORA_TOKEN: 'test-only-token'.repeat(3),
+  };
+  const originalEnv = Object.fromEntries(
+    Object.keys(settings).map((key) => [key, process.env[key]]),
+  );
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    globalThis.fetch = originalFetch;
+  });
+  Object.assign(process.env, settings);
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push('lora');
+    assert.equal(
+      typeof url === 'string' ? url : url instanceof URL ? url.href : url.url,
+      'http://127.0.0.1:3291/analyze',
+    );
+    assert.equal(JSON.parse(options.body).text, source);
+    return Response.json({
+      format: 'focused-state-v1',
+      model: 'Qwen3 4B + LoRA v6',
+      adapter: 'resume-reviewed-20261107-selected',
+      technologies: [
+        {
+          name: 'pandas',
+          state: 'used',
+          mentions: [
+            { quote: 'pandas', text: '사용 기술: Python, pandas, SQL' },
+          ],
+        },
+      ],
+      skills: [],
+    });
+  };
+  globalThis.__INTRO_CALL = async (args) => {
+    calls.push('summary');
+    assert.deepEqual(JSON.parse(args.prompt), { resume: source });
+    assert.match(args.instructions, /한국어 한 문장/);
+    return generation();
+  };
+  const body = {
+    ...input,
+    targetPosting: '비교용 공고이며 소개 모델로 보내지 않습니다.',
+    action: 'profile',
+    mode: 'ai',
+    version: 0,
+    introductionProvider: 'openai',
+    introductionConsent: true,
+  };
+  const response = await send(api.careerPOST, 'one-click', body);
+  assert.equal(response.status, 200, await response.clone().text());
+  const { profile, introductionStatus } = await response.json();
+  assert.equal(introductionStatus, 'saved');
+  assert.equal(profile.version, 1);
+  assert.equal(profile.analysis.engine.model, 'Qwen3 4B + LoRA v6');
+  assert.equal(profile.analysis.technologies[0].name, 'pandas');
+  assert.equal(profile.analysis.workSummaryProvider, 'openai');
+  assert.deepEqual(profile.analysis.workSummaries[0].lines, validOutput.lines);
+  assert.deepEqual(calls, ['lora', 'summary']);
+  assert.equal(
+    (await db.one('SELECT n FROM career_ai_quota WHERE user_id=?', 'one-click'))
+      .n,
+    1,
+  );
+  assert.equal((await send(api.careerPOST, 'one-click', body)).status, 409);
+  assert.deepEqual(calls, ['lora', 'summary']);
+
+  const repeated = await send(api.careerPOST, 'one-click', {
+    ...body,
+    version: 1,
+  });
+  assert.equal(repeated.status, 200);
+  assert.equal(
+    (await repeated.json()).profile.analysis.workSummaries.length,
+    1,
+  );
+  assert.deepEqual(calls, ['lora', 'summary', 'lora']);
+});
+
+test('소개 생성의 동의와 한 문장 제한을 확인하며 소개 실패 후에도 기술 결과를 저장한다', async () => {
+  let calls = 0;
+  globalThis.__INTRO_CALL = async () => {
+    calls++;
+    return {
+      ...generation(),
+      output: { lines: [validOutput.lines[0], validOutput.lines[0]] },
+    };
+  };
+  const body = {
+    ...input,
+    action: 'profile',
+    mode: 'basic',
+    version: 0,
+    introductionProvider: 'openai',
+  };
+  const rejected = await send(api.careerPOST, 'summary-failure', body);
+  assert.equal(rejected.status, 400);
+  assert.equal(calls, 0);
+  const response = await send(api.careerPOST, 'summary-failure', {
+    ...body,
+    introductionConsent: true,
+  });
+  assert.equal(response.status, 200);
+  const { profile, introductionStatus } = await response.json();
+  assert.equal(introductionStatus, 'failed');
+  assert.equal(profile.version, 1);
+  assert.ok(profile.analysis.skills.length > 0);
+  assert.equal(profile.analysis.workSummaries, undefined);
+  assert.equal(calls, 1);
+
+  const fallback = await send(api.careerPOST, 'summary-failure', {
+    ...input,
+    action: 'profile',
+    mode: 'basic',
+    version: 1,
+  });
+  assert.equal(fallback.status, 200);
+  assert.equal(calls, 1);
+});
+
+test('한 번에 세 모델을 비교하고 실패한 모델만 다시 시도한 뒤 소개를 선택한다', async () => {
+  const calls = [];
+  let claudeFails = true;
+  globalThis.__INTRO_CALL = async ({ model, prompt, instructions }) => {
+    assert.deepEqual(JSON.parse(prompt), { resume: source });
+    calls.push({ model: model.provider, instructions });
+    if (claudeFails && model.provider.startsWith('anthropic'))
+      throw new Error('test failure');
+    return generation();
+  };
+  const user = 'work-summary-comparison';
+  const body = {
+    ...input,
+    action: 'profile',
+    mode: 'basic',
+    version: 0,
+    introductionProviders: ['openai', 'anthropic', 'google'],
+    introductionConsent: true,
+  };
+  const charge = async () =>
+    (await db.one('SELECT n FROM career_ai_quota WHERE user_id=?', user)).n;
+  const first = await send(api.careerPOST, user, body);
+  assert.equal(first.status, 200, await first.clone().text());
+  const comparison = await first.json();
+  assert.equal(comparison.introductionStatus, 'partial');
+  assert.equal(comparison.profile.version, 1);
+  assert.ok(comparison.profile.analysis.skills.length > 0);
+  assert.deepEqual(
+    comparison.profile.analysis.workSummaries.map(({ provider }) => provider),
+    ['openai', 'google'],
+  );
+  assert.equal(comparison.profile.analysis.workSummaryProvider, 'openai');
+  assert.deepEqual(
+    new Set(calls.map(({ model }) => model.split('.')[0])),
+    new Set(['anthropic', 'google', 'openai']),
+  );
+  assert.equal(new Set(calls.map(({ instructions }) => instructions)).size, 1);
+  assert.equal(await charge(), 3);
+
+  claudeFails = false;
+  const retry = await send(api.careerPOST, user, { ...body, version: 1 });
+  assert.equal(retry.status, 200, await retry.clone().text());
+  const complete = await retry.json();
+  assert.equal(complete.introductionStatus, 'saved');
+  assert.equal(complete.profile.version, 2);
+  assert.equal(complete.profile.analysis.workSummaries.length, 3);
+  assert.equal(calls.length, 4);
+  assert.match(calls[3].model, /^anthropic/);
+  assert.equal(await charge(), 4);
+
+  const selection = await send(api.careerPOST, user, {
+    action: 'selectWorkSummary',
+    version: 2,
+    provider: 'google',
+  });
+  assert.equal(selection.status, 200, await selection.clone().text());
+  assert.equal(
+    (await selection.json()).profile.analysis.workSummaryProvider,
+    'google',
+  );
+  assert.equal(calls.length, 4);
+  assert.equal(await charge(), 4);
 });

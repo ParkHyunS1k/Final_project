@@ -3,6 +3,10 @@ import { AccessError } from '@/lib/projects';
 import { PolicyError } from '@/lib/sprint-policy';
 import { Conflict } from '@/lib/sprint-store';
 import { reviewTechnologies } from '@/lib/career/focused-model';
+import {
+  introFingerprint,
+  introductionProviders,
+} from '@/lib/career/introduction-config';
 import { SKILLS, ROLES, TARGETS } from '@/lib/career/catalog';
 import {
   CareerError,
@@ -11,6 +15,8 @@ import {
   gapsFor,
   recommendations,
   reviewAnalysis,
+  type Analysis,
+  type IntroResult,
 } from '@/lib/career/profile';
 import {
   analyzeWithAI,
@@ -98,6 +104,7 @@ export async function GET(request: Request) {
       targets: TARGETS,
       aiConfigured: careerAiConfigured(),
       ai: careerAiInfo(),
+      introductionProviders: introductionProviders(),
       extraSkills: extra,
       gaps: profile ? gapsFor(profile, extra) : [],
       beforeGaps: profile ? gapsFor(profile) : [],
@@ -131,6 +138,25 @@ export async function POST(request: Request) {
         throw new CareerError('프로필 버전을 확인해주세요.');
       if (b.mode !== 'basic' && b.mode !== 'ai')
         throw new CareerError('분석 방식을 선택해주세요.');
+      const version = Number(b.version);
+      const providers = introductionProviders();
+      const ids =
+        b.introductionProviders ??
+        (b.introductionProvider === undefined ? [] : [b.introductionProvider]);
+      if (
+        !Array.isArray(ids) ||
+        ids.length > providers.length ||
+        new Set(ids).size !== ids.length ||
+        ids.some((id) => !providers.some((provider) => provider.id === id))
+      )
+        throw new CareerError('비교할 소개 모델을 확인해주세요.');
+      const selected = providers.filter((provider) =>
+        ids.includes(provider.id),
+      );
+      if (selected.length && b.introductionConsent !== true)
+        throw new CareerError(
+          '선택한 외부 모델에 이력서 본문을 보내는 데 동의해주세요.',
+        );
       if (b.mode === 'ai') {
         if (careerAiInfo().provider === 'openai' && b.consent !== true)
           throw new CareerError(
@@ -142,21 +168,107 @@ export async function POST(request: Request) {
             503,
           );
       }
-      const claim = await claimProfileWrite(
-        user.id,
-        Number(b.version),
-        b.mode === 'ai',
+      const previous = version > 0 ? await readProfile(user.id) : null;
+      const prior =
+        previous?.resumeText === input.resumeText
+          ? previous.analysis
+          : undefined;
+      const summaries = new Map(
+        (prior?.workSummaries ?? []).map((summary) => [
+          summary.provider,
+          summary,
+        ]),
       );
+      const candidates = selected.map((provider) => {
+        const cached = summaries.get(provider.id);
+        const fingerprint = introFingerprint(
+          input.resumeText,
+          provider.id,
+          provider.model,
+          'work-summary',
+        );
+        return {
+          provider,
+          cached: cached?.fingerprint === fingerprint ? cached : undefined,
+        };
+      });
+      const pending = candidates.filter(
+        ({ provider, cached }) => provider.configured && !cached,
+      );
+      const quotaUnits = Math.max(b.mode === 'ai' ? 1 : 0, pending.length);
+      const claim = await claimProfileWrite(user.id, version, quotaUnits);
+      let externalAttempted = false;
       try {
-        const analysis =
+        const extraction =
           b.mode === 'ai' ? await analyzeWithAI(input) : basicAnalysis(input);
-        return reply({ profile: await saveProfile(claim, input, analysis) });
+        const results = new Map(
+          candidates.flatMap(({ cached }) =>
+            cached ? [[cached.provider, cached] as const] : [],
+          ),
+        );
+        if (pending.length) {
+          const { generateIntroduction } =
+            await import('@/lib/career/introduction');
+          externalAttempted = true;
+          // Each model receives the same body and prompt. Run comparisons together
+          // so they fit within the request budget even with local extraction.
+          const generated = await Promise.allSettled(
+            pending.map(({ provider }) =>
+              generateIntroduction(
+                input.resumeText,
+                provider.id,
+                'work-summary',
+              ),
+            ),
+          );
+          for (const result of generated)
+            if (result.status === 'fulfilled')
+              results.set(result.value.provider, result.value);
+        }
+        for (const [id, summary] of results) summaries.set(id, summary);
+        const firstCompleted = selected.find((provider) =>
+          results.has(provider.id),
+        );
+        const chosen = prior?.workSummaryProvider;
+        const workSummaryProvider =
+          chosen && summaries.has(chosen) ? chosen : firstCompleted?.id;
+        const analysis: Analysis = {
+          ...extraction,
+          introductions: prior?.introductions,
+          selectedIntroduction: prior?.selectedIntroduction,
+          workSummaries: summaries.size ? [...summaries.values()] : undefined,
+          workSummaryProvider,
+        };
+        let introductionStatus:
+          | 'saved'
+          | 'partial'
+          | 'unavailable'
+          | 'failed'
+          | undefined;
+        if (selected.length)
+          introductionStatus =
+            results.size === selected.length
+              ? 'saved'
+              : results.size > 0
+                ? 'partial'
+                : pending.length
+                  ? 'failed'
+                  : 'unavailable';
+        const profile = await saveProfile(claim, input, analysis);
+        return reply({
+          profile,
+          ...(introductionStatus && { introductionStatus }),
+        });
       } catch (e) {
-        await releaseProfileWrite(claim, true);
+        await releaseProfileWrite(claim, !externalAttempted);
         throw e;
       }
     }
-    if (b.action === 'reviewProfile' || b.action === 'reviewTechnologies') {
+    if (
+      b.action === 'reviewProfile' ||
+      b.action === 'reviewTechnologies' ||
+      b.action === 'selectWorkSummary'
+    ) {
       if (!Number.isInteger(b.version) || Number(b.version) < 1)
         throw new CareerError('프로필 버전을 확인해주세요.');
       const claim = await claimProfileWrite(user.id, Number(b.version), false);
@@ -164,10 +276,23 @@ export async function POST(request: Request) {
         const profile = await readProfile(user.id);
         if (!profile || profile.version !== Number(b.version))
           throw new CareerError('최신 프로필을 불러와 다시 검토해주세요.', 409);
-        const analysis =
-          b.action === 'reviewTechnologies'
-            ? reviewTechnologies(b.changes, profile)
-            : reviewAnalysis(b, profile);
+        let analysis: Analysis;
+        if (b.action === 'selectWorkSummary') {
+          const summary = profile.analysis.workSummaries?.find(
+            (item: IntroResult) => item.provider === b.provider,
+          );
+          if (!summary)
+            throw new CareerError('현재 이력서로 만든 소개를 선택해주세요.');
+          analysis = {
+            ...profile.analysis,
+            workSummaryProvider: summary.provider,
+          };
+        } else {
+          analysis =
+            b.action === 'reviewTechnologies'
+              ? reviewTechnologies(b.changes, profile)
+              : reviewAnalysis(b, profile);
+        }
         return reply({
           profile: await saveProfile(claim, profileInput(profile), analysis),
         });

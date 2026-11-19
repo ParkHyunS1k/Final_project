@@ -36,11 +36,13 @@ import {
 import type {
   Profile,
   ProfileInput,
+  IntroResult,
   SkillEvidence,
   Requirement,
   gapsFor,
   recommendations,
 } from '@/lib/career/profile';
+import type { introductionProviders } from '@/lib/career/introduction-config';
 import type { Experience, teamState } from '@/lib/career/store';
 import type { Wire } from '@/lib/wire';
 
@@ -53,6 +55,7 @@ type Personal = {
   recommendations: ReturnType<typeof recommendations>;
   aiConfigured: boolean;
   ai: { provider: string; model: string; configured: boolean };
+  introductionProviders: ReturnType<typeof introductionProviders>;
 };
 type Team = Wire<Omit<Awaited<ReturnType<typeof teamState>>, '_team'>>;
 type Section = 'profile' | 'recommend' | 'team' | 'experience';
@@ -154,6 +157,15 @@ export function CareerWorkspace({
   const [version, setVersion] = useState(0);
   const [mode, setMode] = useState<'basic' | 'ai'>('basic');
   const [consent, setConsent] = useState(false);
+  const [introChoices, setIntroChoices] = useState<IntroResult['provider'][]>();
+  const [introConsent, setIntroConsent] = useState('');
+  const introProviders = (data?.introductionProviders ?? []).filter(
+    (p) => p.configured,
+  );
+  const selectedIntroProviders = introProviders.filter(
+    (p) => introChoices?.includes(p.id) ?? true,
+  );
+  const introSelectionKey = selectedIntroProviders.map((p) => p.id).join(',');
   const [projects, setProjects] = useState<{ id: string; title: string }[]>([]);
   const [projectId, setProjectId] = useState(initialProject);
   const [team, setTeam] = useState<Team | null>(null);
@@ -317,19 +329,45 @@ export function CareerWorkspace({
   async function saveProfile(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     await act(async () => {
-      await request('/api/career', {
+      const result = await request<{
+        introductionStatus?: 'saved' | 'partial' | 'unavailable' | 'failed';
+      }>('/api/career', {
         ...form,
         action: 'profile',
         version,
         mode,
         consent,
+        ...(selectedIntroProviders.length > 0 && {
+          introductionProviders: selectedIntroProviders.map(
+            (provider) => provider.id,
+          ),
+          introductionConsent: introConsent === introSelectionKey,
+        }),
       });
       hydrate(await request<Personal>('/api/career'));
       setEditing(false);
       setPrefillSaved(true);
-      setNotice(
-        '근거와 추천을 저장했습니다. 프로젝트 추천에서 다음 경험을 골라보세요.',
-      );
+      if (result.introductionStatus === 'saved') {
+        setNotice(
+          selectedIntroProviders.length > 1
+            ? '기술 분석과 선택한 모델의 소개를 저장했어요.'
+            : '기술 분석과 한 문장 소개를 함께 저장했어요.',
+        );
+      } else if (result.introductionStatus === 'partial') {
+        setNotice(
+          '기술 분석과 생성된 소개를 저장했어요. 일부 모델은 결과를 받지 못했어요.',
+        );
+      } else if (result.introductionStatus === 'failed') {
+        setNotice(
+          '기술 분석을 저장했어요. 외부 모델에서 한 문장 소개를 만들지 못했어요.',
+        );
+      } else if (result.introductionStatus === 'unavailable') {
+        setNotice(
+          '기술 분석을 저장했어요. 한 문장 소개는 서버에 API 키를 설정하면 만들 수 있어요.',
+        );
+      } else {
+        setNotice('기술 분석과 프로젝트 추천을 저장했어요.');
+      }
     });
   }
   async function saveReview(
@@ -519,7 +557,9 @@ export function CareerWorkspace({
                           maxLength={40000}
                           required
                           value={form.resumeText}
-                          placeholder="직접 했던 프로젝트, 맡은 업무, 사용한 기술과 결과를 적어주세요."
+                          placeholder={
+                            '프로젝트: 프로젝트 이름\n담당 업무: 직접 맡은 일과 결과\n사용 기술: 실제로 쓴 기술 이름'
+                          }
                           onChange={(e) => update('resumeText', e.target.value)}
                         />
                       </label>
@@ -638,9 +678,8 @@ export function CareerWorkspace({
                       </label>
                       {mode === 'ai' && data.ai?.provider === 'local' && (
                         <p className="cf-help">
-                          이 Mac의 {data.ai.model || '로컬 모델'}에서
-                          분석합니다. 이력서와 공고는 외부 AI로 전송하지
-                          않습니다.
+                          기술과 역량은 이 컴퓨터의{' '}
+                          {data.ai.model || '로컬 모델'}에서 분석해요.
                         </p>
                       )}
                       {mode === 'ai' && data.ai?.provider === 'openai' && (
@@ -655,10 +694,62 @@ export function CareerWorkspace({
                           동의합니다. 개인정보를 먼저 확인했습니다.
                         </label>
                       )}
+                      {introProviders.length > 0 ? (
+                        <fieldset className="cf-summary-picker">
+                          <legend>비교할 소개 모델</legend>
+                          {introProviders.map((provider) => (
+                            <label className="cf-agreement" key={provider.id}>
+                              <input
+                                type="checkbox"
+                                checked={selectedIntroProviders.some(
+                                  (p) => p.id === provider.id,
+                                )}
+                                onChange={() => {
+                                  setIntroChoices((choices) =>
+                                    toggle(
+                                      choices ??
+                                        introProviders.map((p) => p.id),
+                                      provider.id,
+                                    ),
+                                  );
+                                  setIntroConsent('');
+                                }}
+                              />
+                              {provider.label}
+                            </label>
+                          ))}
+                        </fieldset>
+                      ) : (
+                        <p className="cf-help">
+                          외부 모델 API 키를 연결하면 같은 이력서로 한 문장
+                          소개를 비교할 수 있어요.
+                        </p>
+                      )}
+                      {selectedIntroProviders.length > 0 && (
+                        <label className="cf-agreement">
+                          <input
+                            type="checkbox"
+                            checked={introConsent === introSelectionKey}
+                            onChange={(e) =>
+                              setIntroConsent(
+                                e.target.checked ? introSelectionKey : '',
+                              )
+                            }
+                            required
+                          />
+                          {selectedIntroProviders
+                            .map((p) => p.label)
+                            .join(', ')}
+                          에 한 문장 소개를 만들 이력서 본문을 보내는 데
+                          동의해요.
+                        </label>
+                      )}
                       <button
                         className="btn primary wide"
                         disabled={
                           busy ||
+                          (introSelectionKey !== '' &&
+                            introConsent !== introSelectionKey) ||
                           (mode === 'ai' &&
                             (!data.aiConfigured ||
                               (data.ai?.provider === 'openai' && !consent)))
@@ -666,8 +757,12 @@ export function CareerWorkspace({
                       >
                         <Sparkles size={16} />
                         {busy
-                          ? '근거를 확인하고 있어요…'
-                          : '역량 분석하고 추천받기'}
+                          ? '이력서를 분석하고 있어요…'
+                          : selectedIntroProviders.length > 1
+                            ? '기술 분석하고 모델별 소개 비교하기'
+                            : selectedIntroProviders.length === 1
+                              ? '기술 분석하고 한 문장 소개 만들기'
+                              : '역량 분석하고 추천받기'}
                       </button>
                     </fieldset>
                   </form>
@@ -708,6 +803,23 @@ export function CareerWorkspace({
                       {profile.analysis.reviewedAt && (
                         <span className="cf-chip">검토 수정 반영</span>
                       )}
+                      <CareerIntroduction
+                        profile={profile}
+                        disabled={
+                          busy || form.resumeText !== profile.resumeText
+                        }
+                        onSelect={(provider) => {
+                          void act(async () => {
+                            await request('/api/career', {
+                              action: 'selectWorkSummary',
+                              version,
+                              provider,
+                            });
+                            hydrate(await request<Personal>('/api/career'));
+                            setNotice('선택한 한 문장 소개를 저장했어요.');
+                          });
+                        }}
+                      />
                       <CareerTechnologies
                         key={profile.id}
                         profile={profile}
@@ -809,27 +921,6 @@ export function CareerWorkspace({
                 </section>
               </div>
             </div>
-            {profile && (
-              <CareerIntroduction
-                profile={profile}
-                disabled={
-                  busy ||
-                  (Object.keys(EMPTY) as (keyof ProfileInput)[]).some(
-                    (key) =>
-                      JSON.stringify(form[key]) !==
-                      JSON.stringify(profile[key]),
-                  )
-                }
-                onBusy={setBusy}
-                onSaved={(p) => {
-                  setData((current) =>
-                    current ? { ...current, profile: p } : current,
-                  );
-                  setVersion(p.version);
-                  setForm(p);
-                }}
-              />
-            )}
           </>
         )}
         {data && section === 'recommend' && (

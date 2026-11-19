@@ -10,7 +10,7 @@ import { sprintDay } from '@/lib/race';
 import { studyCalendar } from '@/lib/study-calendar';
 export { studyCalendar };
 import { restrictionMessage, type Grade, type RestrictionView } from '@/lib/score';
-import { basisLabel, type ProfileGrade } from '@/lib/profile-score';
+import { basisLabel } from '@/lib/profile-score';
 import type { ProfileStanding, ProfileSettings, readProfileSettings } from '@/lib/profile-store';
 import { useState } from 'react';
 
@@ -82,9 +82,8 @@ export function MySummary({
   stats: { streak: number; days: number };
   onShare?: () => void;
 }) {
-  const p = score?.profile ?? null;
-  const grade: ProfileGrade = p?.grade ?? 'E';
-  const finished = score?.history.filter((p) => p.lifecycle === 'completed' && !p.left).length ?? 0;
+  const standing = score?.profile;
+  const finished = score?.history.filter((p) => p.lifecycle === 'completed' && !p.left).length;
   return (
     <section className="my-summary" aria-label="내 요약">
       <div className="my-me">
@@ -93,15 +92,17 @@ export function MySummary({
         </span>
         <div>
           <h2>{name || '나'}</h2>
-          <p>{target ? `${target} 목표` : '목표 직무를 이력서·역량에서 정할 수 있어요'}</p>
+          {target && <p>{`${target} 목표`}</p>}
         </div>
-        <div className="my-grade">
-          <b>{grade}</b>
-          <span>{`상위 ${p?.percentile ?? '-'}%`}</span>
-        </div>
+        {standing?.score != null && (
+          <div className="my-grade">
+            <b>{standing.grade}</b>
+            {standing.percentile != null && <span>{`상위 ${standing.percentile}%`}</span>}
+          </div>
+        )}
       </div>
       <div className="my-standing">
-        <span className="my-meta">{p ? basisLabel(p.computedAt) : '매일 새벽에 계산돼요'}</span>
+        {standing?.score != null && <span className="my-meta">{basisLabel(standing.computedAt)}</span>}
         <button type="button" className="icon-btn my-share-btn" onClick={onShare} aria-label="내 프로필 공유" title="내 프로필 공유">
           <Share2 size={18} />
         </button>
@@ -115,14 +116,18 @@ export function MySummary({
           <dt>학습한 날</dt>
           <dd>{`${stats.days}일`}</dd>
         </div>
-        <div>
-          <dt>완주한 프로젝트</dt>
-          <dd>{`${finished}개`}</dd>
-        </div>
-        <div>
-          <dt>프로필 점수 (5점)</dt>
-          <dd>{p?.score ?? '—'}</dd>
-        </div>
+        {finished !== undefined && (
+          <div>
+            <dt>완주한 프로젝트</dt>
+            <dd>{`${finished}개`}</dd>
+          </div>
+        )}
+        {standing?.score != null && (
+          <div>
+            <dt>프로필 점수 (5점)</dt>
+            <dd>{standing.score}</dd>
+          </div>
+        )}
       </dl>
     </section>
   );
@@ -210,7 +215,7 @@ export function ActivityPanel({
           </div>
         </section>
         <section className="hub-card">
-          <h3>{`뱃지 ${earned.length} / ${score?.badges.length ?? 0}`}</h3>
+          <h3>{score ? `뱃지 ${earned.length} / ${score.badges.length}` : '뱃지'}</h3>
           <ul className="my-badges">
             {score?.badges.map((b) => (
               <li key={b.id} className={b.earnedAt ? 'my-badge' : 'my-badge off'} title={b.description}>
@@ -223,9 +228,11 @@ export function ActivityPanel({
         <section className="hub-card my-now">
           <button type="button" onClick={onTeams}>
             <span>참여 신청</span>
-            <span className={'pill' + (pendingRequests ? ' orange' : '')}>
-              {pendingRequests === null ? '확인 못 함' : pendingRequests ? `확인 대기 ${pendingRequests}` : '대기 없음'}
-            </span>
+            {pendingRequests !== null && (
+              <span className={'pill' + (pendingRequests ? ' orange' : '')}>
+                {pendingRequests ? `확인 대기 ${pendingRequests}` : '대기 없음'}
+              </span>
+            )}
           </button>
           <button type="button" onClick={onJobs}>
             <span>관심 공고</span>

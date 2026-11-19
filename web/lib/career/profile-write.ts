@@ -6,16 +6,18 @@ export type ProfileWrite = {
   version: number;
   id: string;
   quotaDay: string | null;
+  quotaUnits: number;
 };
 
 /** 계정별 저장을 선점하고, AI 요청만 같은 트랜잭션에서 한도를 예약한다. */
 export async function claimProfileWrite(
   userId: string,
   version: number,
-  ai: boolean,
+  units: number | boolean,
 ): Promise<ProfileWrite> {
   const db = database();
   const id = crypto.randomUUID();
+  const quotaUnits = Number(units);
   const results = await db.batch<{ day: string }>([
     // 첫 저장도 직렬화한다. 잠금을 얻은 뒤 다음 문장에서 최신 프로필 버전을 읽는다.
     // 한 문장 안의 하위 쿼리는 잠금 대기 이전 스냅샷을 볼 수 있으므로 분리한다.
@@ -33,11 +35,11 @@ export async function claimProfileWrite(
       .bind(id, userId, userId, version),
     db
       .prepare(`INSERT INTO career_ai_quota(user_id,day,n)
-      SELECT user_id,(clock_timestamp() AT TIME ZONE 'Asia/Seoul')::date,1
-      FROM career_profile_writes WHERE user_id=? AND claim_id=? AND ?
-      ON CONFLICT(user_id,day) DO UPDATE SET n=career_ai_quota.n+1
-      WHERE career_ai_quota.n<10 RETURNING day`)
-      .bind(userId, id, ai),
+      SELECT user_id,(clock_timestamp() AT TIME ZONE 'Asia/Seoul')::date,?::int
+      FROM career_profile_writes WHERE user_id=? AND claim_id=? AND ?::int>0
+      ON CONFLICT(user_id,day) DO UPDATE SET n=career_ai_quota.n+excluded.n
+      WHERE career_ai_quota.n+excluded.n<=10 RETURNING day`)
+      .bind(quotaUnits, userId, id, quotaUnits),
   ]);
   if (results[1].meta.changes !== 1)
     throw new CareerError(
@@ -49,11 +51,12 @@ export async function claimProfileWrite(
     version,
     id,
     quotaDay: results[2].results[0]?.day ?? null,
+    quotaUnits,
   };
-  if (ai && !claim.quotaDay) {
+  if (quotaUnits > 0 && !claim.quotaDay) {
     await releaseProfileWrite(claim);
     throw new CareerError(
-      '오늘의 이력서 AI 분석 10회를 모두 사용했습니다. 기본 추출은 계속 사용할 수 있습니다.',
+      '오늘의 AI 사용 한도가 부족합니다. 비교할 모델 수를 줄이거나 기본 추출을 선택해주세요.',
       429,
     );
   }
@@ -71,9 +74,9 @@ export async function releaseProfileWrite(claim: ProfileWrite, refund = false) {
       .bind(claim.userId),
     db
       .prepare(
-        'UPDATE career_ai_quota SET n=n-1 WHERE user_id=? AND day=? AND n>0 AND ?',
+        'UPDATE career_ai_quota SET n=GREATEST(0,n-?::int) WHERE user_id=? AND day=? AND n>0 AND ?',
       )
-      .bind(claim.userId, claim.quotaDay, refund),
+      .bind(claim.quotaUnits, claim.userId, claim.quotaDay, refund),
     db
       .prepare(
         'UPDATE career_profile_writes SET claim_id=NULL,expires_at=NULL WHERE user_id=? AND claim_id=?',
