@@ -84,17 +84,15 @@ void test('요약: 이름, 프로필 등급·상위 %·기준 시각, 연속 학
   assert.doesNotMatch(html, /최고 등급/);
 });
 
-void test('요약: 저장값이 없으면 E·점수 없음·새벽 계산 안내, 점수 없으면 상위 % 안내', () => {
+void test('요약에서 아직 계산되지 않은 점수, 등급과 순위를 숨긴다', () => {
   const html = renderToString(createElement(MySummary, { name: '새 사용자', target: '', score: null, stats: { streak: 0, days: 0 } }));
-  assert.match(html, /<b>E<\/b><span>상위 -%<\/span>/);
-  assert.match(html, /프로필 점수 \(5점\)<\/dt><dd>—/);
-  assert.match(html, /매일 새벽에 계산돼요/);
+  assert.doesNotMatch(html, /my-grade|상위|프로필 점수|완주한 프로젝트/);
+  assert.match(html, /학습한 날<\/dt><dd>0일/);
   const unscored = renderToString(
-    createElement(MySummary, { name: '새 사용자', target: '', score: { ...score, profile: { ...score.profile, score: null, grade: 'E', percentile: null } }, stats: { streak: 0, days: 0 } }),
+    createElement(MySummary, { name: '새 사용자', target: '', score: { ...score, history: [], profile: { ...score.profile, score: null, grade: 'E', percentile: null } }, stats: { streak: 0, days: 0 } }),
   );
-  assert.doesNotMatch(unscored, /평가를 받으면/);
-  assert.match(unscored, /<b>E<\/b><span>상위 -%<\/span>/);
-  assert.match(html, /완주한 프로젝트<\/dt><dd>0개/);
+  assert.doesNotMatch(unscored, /my-grade|상위|프로필 점수/);
+  assert.match(unscored, /완주한 프로젝트<\/dt><dd>0개/);
 });
 
 void test('활동: 프로젝트 기록(내 등급), 뱃지(받은 수), 참여 신청 대기 수, 학습한 날 칸', () => {

@@ -12,6 +12,7 @@ const day = (iso: string | null) =>
 export function PublicProfileView({ profile, now }: { profile: PublicProfile; now: Date }) {
   const s = profile.standing;
   const cells = studyCalendar(profile.dates, now);
+  const headline = [profile.target && `${profile.target} 목표`, profile.github && `@${profile.github}`].filter(Boolean).join(', ');
   return (
     <main className="pp">
       <section className="pp-hero">
@@ -20,16 +21,16 @@ export function PublicProfileView({ profile, now }: { profile: PublicProfile; no
             <span>p.</span> projectmate · 7일 스프린트 기록
           </p>
           <h1>{profile.displayName}</h1>
-          <p>
-            {[profile.target && `${profile.target} 목표`, profile.github && `@${profile.github}`].filter(Boolean).join(' · ')}
-          </p>
+          {headline && <p>{headline}</p>}
         </div>
-        <div className="pp-score">
-          <b className="pp-grade">{s?.grade ?? 'E'}</b>
-          {s?.score != null && <span>{`${s.score} / 5`}</span>}
-          {s?.percentile != null && <span className="pp-top">{`상위 ${s.percentile}%`}</span>}
-          <small>{s ? basisLabel(s.computedAt) : '매일 새벽에 계산돼요'}</small>
-        </div>
+        {s?.score != null && (
+          <div className="pp-score">
+            <b className="pp-grade">{s.grade}</b>
+            <span>{`${s.score} / 5`}</span>
+            {s.percentile != null && <span className="pp-top">{`상위 ${s.percentile}%`}</span>}
+            <small>{basisLabel(s.computedAt)}</small>
+          </div>
+        )}
       </section>
       <dl className="pp-stats">
         <div>
@@ -98,7 +99,7 @@ export function PublicProfileView({ profile, now }: { profile: PublicProfile; no
               {e.projectTitle && <span className="pp-meta">{e.projectTitle}</span>}
               <h3>{e.title}</h3>
               <p>{e.bullet}</p>
-              <p className="pp-meta">{e.skills.map((id) => skillName(id)).join(' · ')}</p>
+              {e.skills.length > 0 && <p className="pp-meta">{e.skills.map((id) => skillName(id)).join(', ')}</p>}
               {e.evidence && (
                 <details>
                   <summary>완료 근거</summary>

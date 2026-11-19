@@ -55,6 +55,7 @@ export type Analysis = {
   technologies?: Technology[];
   introductions?: IntroResult[];
   selectedIntroduction?: IntroResult['provider'];
+  workSummary?: IntroResult;
   mode: 'basic' | 'ai';
   reviewedAt?: string;
   engine?: { provider: 'local' | 'openai'; model: string; adapter?: string };
