@@ -62,14 +62,14 @@ void test('요약: 이름·목표·등급·점수·상위 %·완주·연속 학�
   assert.match(html, /최근 12주 중 2일 학습/);
 });
 
-void test('저장값이 없으면 새벽 계산 안내, 점수가 없으면 E와 상위 % 없음, GitHub 없음', () => {
+void test('프로필 점수와 GitHub는 값이 있을 때 표시한다', () => {
   const none = render({ ...profile, standing: null, github: null });
-  assert.match(none, /매일 새벽에 계산돼요/);
-  assert.match(none, /<b class="pp-grade">E<\/b>/);
-  assert.doesNotMatch(none, /@harin-dev/);
+  assert.doesNotMatch(none, /pp-score|pp-grade|상위|@harin-dev/);
   const empty = render({ ...profile, standing: { ...profile.standing, score: null, grade: 'E', percentile: null } });
-  assert.match(empty, /<b class="pp-grade">E<\/b>/);
-  assert.doesNotMatch(empty, /상위 \d+%/);
+  assert.doesNotMatch(empty, /pp-score|pp-grade|상위/);
+  const unranked = render({ ...profile, standing: { ...profile.standing, percentile: null } });
+  assert.match(unranked, /4\.5 \/ 5/);
+  assert.doesNotMatch(unranked, /상위/);
 });
 
 void test('프로젝트: 이름·기간·인원·역할·등급, 경험: 문장·역량·켠 근거만', () => {
@@ -82,17 +82,17 @@ void test('프로젝트: 이름·기간·인원·역할·등급, 경험: 문장�
   assert.match(html, /href="\/"[^>]*>나도 7일 스프린트 시작하기/);
 });
 
-void test('카드: 등급·점수·상위 %·이름·완주·주소, 저장값 없으면 E와 안내', () => {
+void test('공유 카드에는 실제 점수, 등급과 순위가 있을 때 표시한다', () => {
   for (const size of ['og', 'story']) {
     const html = renderToString(createElement(ProfileCard, { profile, size }));
     assert.match(html, />A</);
-    assert.match(html, /4\.5 \/ 5 · 상위 12%/);
+    assert.match(html, /4\.5 \/ 5, 상위 12%/);
     assert.match(html, /하린/);
     assert.match(html, /완주 2/);
     assert.match(html, /\/u\/harin/);
     assert.match(html, /소통왕/);
   }
   const none = renderToString(createElement(ProfileCard, { profile: { ...profile, standing: null }, size: 'og' }));
-  assert.match(none, />E</);
-  assert.match(none, /평가를 받으면 상위 %가 나와요/);
+  assert.doesNotMatch(none, />E<|상위|PROFILE GRADE/);
+  assert.match(none, /하린/);
 });

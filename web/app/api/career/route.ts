@@ -3,6 +3,10 @@ import { AccessError } from '@/lib/projects';
 import { PolicyError } from '@/lib/sprint-policy';
 import { Conflict } from '@/lib/sprint-store';
 import { reviewTechnologies } from '@/lib/career/focused-model';
+import {
+  introFingerprint,
+  introductionProvider,
+} from '@/lib/career/introduction-config';
 import { SKILLS, ROLES, TARGETS } from '@/lib/career/catalog';
 import {
   CareerError,
@@ -11,6 +15,7 @@ import {
   gapsFor,
   recommendations,
   reviewAnalysis,
+  type Analysis,
 } from '@/lib/career/profile';
 import {
   analyzeWithAI,
@@ -89,6 +94,7 @@ export async function GET(request: Request) {
       pendingExperiences(user.id),
     ]);
     const extra = experienceSkills(experiences);
+    const intro = introductionProvider();
     return reply({
       profile,
       experiences,
@@ -98,6 +104,9 @@ export async function GET(request: Request) {
       targets: TARGETS,
       aiConfigured: careerAiConfigured(),
       ai: careerAiInfo(),
+      introduction: intro?.configured
+        ? { provider: intro.id, label: intro.label }
+        : null,
       extraSkills: extra,
       gaps: profile ? gapsFor(profile, extra) : [],
       beforeGaps: profile ? gapsFor(profile) : [],
@@ -131,6 +140,18 @@ export async function POST(request: Request) {
         throw new CareerError('프로필 버전을 확인해주세요.');
       if (b.mode !== 'basic' && b.mode !== 'ai')
         throw new CareerError('분석 방식을 선택해주세요.');
+      const version = Number(b.version);
+      const intro = introductionProvider();
+      const requested = b.introductionProvider !== undefined;
+      if (
+        requested &&
+        (!intro?.configured ||
+          b.introductionProvider !== intro.id ||
+          b.introductionConsent !== true)
+      )
+        throw new CareerError(
+          '한 문장 소개 모델과 본문 전송 동의를 확인해주세요.',
+        );
       if (b.mode === 'ai') {
         if (careerAiInfo().provider === 'openai' && b.consent !== true)
           throw new CareerError(
@@ -142,17 +163,56 @@ export async function POST(request: Request) {
             503,
           );
       }
+      const previous = version > 0 ? await readProfile(user.id) : null;
+      const prior =
+        previous?.resumeText === input.resumeText
+          ? previous.analysis
+          : undefined;
+      let workSummary = prior?.workSummary;
+      const generate =
+        requested &&
+        intro?.configured &&
+        workSummary?.fingerprint !==
+          introFingerprint(input.resumeText, intro.id, intro.model);
       const claim = await claimProfileWrite(
         user.id,
-        Number(b.version),
-        b.mode === 'ai',
+        version,
+        b.mode === 'ai' || Boolean(generate),
       );
+      let externalAttempted = false;
       try {
-        const analysis =
+        const extraction =
           b.mode === 'ai' ? await analyzeWithAI(input) : basicAnalysis(input);
-        return reply({ profile: await saveProfile(claim, input, analysis) });
+        let introductionStatus: 'saved' | 'failed' | undefined;
+        if (requested && intro?.configured) {
+          introductionStatus = 'saved';
+          if (generate) {
+            const { generateIntroduction } =
+              await import('@/lib/career/introduction');
+            externalAttempted = true;
+            try {
+              workSummary = await generateIntroduction(
+                input.resumeText,
+                intro.id,
+              );
+            } catch {
+              introductionStatus = 'failed';
+            }
+          }
+        }
+        const analysis: Analysis = {
+          ...extraction,
+          introductions: prior?.introductions,
+          selectedIntroduction: prior?.selectedIntroduction,
+          workSummary,
+        };
+        const profile = await saveProfile(claim, input, analysis);
+        return reply({
+          profile,
+          ...(introductionStatus && { introductionStatus }),
+        });
       } catch (e) {
-        await releaseProfileWrite(claim, true);
+        await releaseProfileWrite(claim, !externalAttempted);
         throw e;
       }
     }

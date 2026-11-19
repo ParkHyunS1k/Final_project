@@ -41,6 +41,7 @@ import type {
   gapsFor,
   recommendations,
 } from '@/lib/career/profile';
+import type { IntroProvider } from '@/lib/career/introduction-config';
 import type { Experience, teamState } from '@/lib/career/store';
 import type { Wire } from '@/lib/wire';
 
@@ -53,6 +54,7 @@ type Personal = {
   recommendations: ReturnType<typeof recommendations>;
   aiConfigured: boolean;
   ai: { provider: string; model: string; configured: boolean };
+  introduction: { provider: IntroProvider; label: string } | null;
 };
 type Team = Wire<Omit<Awaited<ReturnType<typeof teamState>>, '_team'>>;
 type Section = 'profile' | 'recommend' | 'team' | 'experience';
@@ -154,6 +156,11 @@ export function CareerWorkspace({
   const [version, setVersion] = useState(0);
   const [mode, setMode] = useState<'basic' | 'ai'>('basic');
   const [consent, setConsent] = useState(false);
+  const [introConsent, setIntroConsent] = useState<IntroProvider>();
+  const introduction = data?.introduction;
+  const includeIntroduction = Boolean(
+    introduction && introConsent === introduction.provider,
+  );
   const [projects, setProjects] = useState<{ id: string; title: string }[]>([]);
   const [projectId, setProjectId] = useState(initialProject);
   const [team, setTeam] = useState<Team | null>(null);
@@ -317,19 +324,32 @@ export function CareerWorkspace({
   async function saveProfile(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     await act(async () => {
-      await request('/api/career', {
+      const result = await request<{
+        introductionStatus?: 'saved' | 'failed';
+      }>('/api/career', {
         ...form,
         action: 'profile',
         version,
         mode,
         consent,
+        ...(introduction &&
+          includeIntroduction && {
+            introductionProvider: introduction.provider,
+            introductionConsent: true,
+          }),
       });
       hydrate(await request<Personal>('/api/career'));
       setEditing(false);
       setPrefillSaved(true);
-      setNotice(
-        '근거와 추천을 저장했습니다. 프로젝트 추천에서 다음 경험을 골라보세요.',
-      );
+      if (result.introductionStatus === 'saved') {
+        setNotice('기술 분석과 한 문장 소개를 함께 저장했어요.');
+      } else if (result.introductionStatus === 'failed') {
+        setNotice(
+          '기술 분석을 저장했어요. 한 문장 소개는 다음 분석 때 다시 생성할 수 있어요.',
+        );
+      } else {
+        setNotice('기술 분석과 프로젝트 추천을 저장했어요.');
+      }
     });
   }
   async function saveReview(
@@ -519,7 +539,9 @@ export function CareerWorkspace({
                           maxLength={40000}
                           required
                           value={form.resumeText}
-                          placeholder="직접 했던 프로젝트, 맡은 업무, 사용한 기술과 결과를 적어주세요."
+                          placeholder={
+                            '프로젝트: 프로젝트 이름\n담당 업무: 직접 맡은 일과 결과\n사용 기술: 실제로 쓴 기술 이름'
+                          }
                           onChange={(e) => update('resumeText', e.target.value)}
                         />
                       </label>
@@ -638,9 +660,8 @@ export function CareerWorkspace({
                       </label>
                       {mode === 'ai' && data.ai?.provider === 'local' && (
                         <p className="cf-help">
-                          이 Mac의 {data.ai.model || '로컬 모델'}에서
-                          분석합니다. 이력서와 공고는 외부 AI로 전송하지
-                          않습니다.
+                          기술과 역량은 이 컴퓨터의{' '}
+                          {data.ai.model || '로컬 모델'}에서 분석해요.
                         </p>
                       )}
                       {mode === 'ai' && data.ai?.provider === 'openai' && (
@@ -655,6 +676,23 @@ export function CareerWorkspace({
                           동의합니다. 개인정보를 먼저 확인했습니다.
                         </label>
                       )}
+                      {introduction && (
+                        <label className="cf-agreement">
+                          <input
+                            type="checkbox"
+                            checked={includeIntroduction}
+                            onChange={(e) =>
+                              setIntroConsent(
+                                e.target.checked
+                                  ? introduction.provider
+                                  : undefined,
+                              )
+                            }
+                          />
+                          한 문장 소개를 만들기 위해 이력서 본문을{' '}
+                          {introduction.label}에 보내는 데 동의해요.
+                        </label>
+                      )}
                       <button
                         className="btn primary wide"
                         disabled={
@@ -666,8 +704,10 @@ export function CareerWorkspace({
                       >
                         <Sparkles size={16} />
                         {busy
-                          ? '근거를 확인하고 있어요…'
-                          : '역량 분석하고 추천받기'}
+                          ? '이력서를 분석하고 있어요…'
+                          : includeIntroduction
+                            ? '기술 분석하고 한 문장 소개 만들기'
+                            : '역량 분석하고 추천받기'}
                       </button>
                     </fieldset>
                   </form>
@@ -708,6 +748,7 @@ export function CareerWorkspace({
                       {profile.analysis.reviewedAt && (
                         <span className="cf-chip">검토 수정 반영</span>
                       )}
+                      <CareerIntroduction profile={profile} />
                       <CareerTechnologies
                         key={profile.id}
                         profile={profile}
@@ -809,27 +850,6 @@ export function CareerWorkspace({
                 </section>
               </div>
             </div>
-            {profile && (
-              <CareerIntroduction
-                profile={profile}
-                disabled={
-                  busy ||
-                  (Object.keys(EMPTY) as (keyof ProfileInput)[]).some(
-                    (key) =>
-                      JSON.stringify(form[key]) !==
-                      JSON.stringify(profile[key]),
-                  )
-                }
-                onBusy={setBusy}
-                onSaved={(p) => {
-                  setData((current) =>
-                    current ? { ...current, profile: p } : current,
-                  );
-                  setVersion(p.version);
-                  setForm(p);
-                }}
-              />
-            )}
           </>
         )}
         {data && section === 'recommend' && (
