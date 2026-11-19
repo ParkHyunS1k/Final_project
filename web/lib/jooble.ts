@@ -34,6 +34,50 @@ function text(value: unknown, max = 2000) {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
 
+const ENTITIES: Record<string, string> = {
+  nbsp: ' ',
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  hellip: '…',
+  middot: '·',
+};
+
+/** Jooble 제목·요약에 섞여 오는 HTML 태그(<b> 등)와 엔티티(&nbsp; 등)를 걷어 평문으로 만든다. */
+export function plainText(value: unknown, max = 2000) {
+  if (typeof value !== 'string') return '';
+  const decoded = value
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?[a-z][^>]*>/gi, '')
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, name: string) => {
+      if (name[0] === '#') {
+        const code =
+          name[1] === 'x' || name[1] === 'X'
+            ? parseInt(name.slice(2), 16)
+            : parseInt(name.slice(1), 10);
+        return Number.isFinite(code) && code > 0 && code <= 0x10ffff
+          ? String.fromCodePoint(code)
+          : '';
+      }
+      return ENTITIES[name.toLowerCase()] ?? whole;
+    });
+  return decoded
+    .split('\n')
+    .map((line) => line.replace(/[ \t\u00a0]+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n')
+    .slice(0, max);
+}
+
+/** '2026-11-13T00:00:00.0000000' → '2026-11-13'. 날짜로 읽히지 않으면 그대로 둔다. */
+function dateOnly(value: unknown) {
+  const raw = text(value, 80);
+  const m = /^(\d{4}-\d{2}-\d{2})T/.exec(raw);
+  return m ? m[1] : raw;
+}
+
 function httpsLink(value: unknown) {
   const raw = text(value, 2000);
   if (!raw) return '';
@@ -48,20 +92,20 @@ function httpsLink(value: unknown) {
 function jobFrom(value: unknown, index: number): JoobleJob | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const job = value as Record<string, unknown>;
-  const title = text(job.title, 200);
+  const title = plainText(job.title, 200);
   const link = httpsLink(job.link);
   if (!title || !link) return null;
   return {
     id: text(job.id, 120) || `${index}:${link}`,
     title,
-    company: text(job.company, 200),
-    location: text(job.location, 200),
-    snippet: text(job.snippet, 4000),
+    company: plainText(job.company, 200),
+    location: plainText(job.location, 200),
+    snippet: plainText(job.snippet, 4000),
     salary: text(job.salary, 200),
     source: text(job.source, 200),
     type: text(job.type, 120),
     link,
-    updated: text(job.updated, 80),
+    updated: dateOnly(job.updated),
   };
 }
 

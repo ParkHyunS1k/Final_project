@@ -44,12 +44,12 @@ globalThis.fetch = async (input, init) => {
           title: '백엔드 개발자',
           company: 'ProjectMate',
           location: '서울',
-          snippet: '<p>API와 테스트를 만듭니다.</p>',
+          snippet: '&nbsp;...<p>API와 <b>테스트</b>를 만듭니다.</p>\n &amp; 배포까지 &#xB9E1;아요',
           salary: '협의',
           source: 'example',
           type: 'Full-time',
           link: 'https://example.com/jobs/42',
-          updated: '2026-10-08T00:00:00Z',
+          updated: '2026-10-08T00:00:00.0000000',
         },
       ],
     }),
@@ -77,6 +77,8 @@ test('공고 검색은 로그인과 입력값을 확인하고 Jooble 결과를 �
   const body = await response.json();
   assert.equal(body.jobs[0].title, '백엔드 개발자');
   assert.equal(body.jobs[0].link, 'https://example.com/jobs/42');
+  assert.equal(body.jobs[0].snippet, '...API와 테스트를 만듭니다.\n& 배포까지 맡아요');
+  assert.equal(body.jobs[0].updated, '2026-10-08');
   assert.equal(captured.url, 'https://kr.jooble.org/api/test-key');
   assert.equal(captured.init.method, 'POST');
   assert.match(captured.init.body, /"keywords":"백엔드 개발"/);
