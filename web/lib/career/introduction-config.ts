@@ -29,7 +29,7 @@ export function introductionProviders() {
     id,
     label: settings[id].label,
     model: process.env[settings[id].env] || settings[id].model,
-    configured: Boolean(process.env[settings[id].key]),
+    configured: process.env.NODE_ENV !== 'production' && Boolean(process.env[settings[id].key]),
     keyName: settings[id].key,
   }));
 }
