@@ -5,8 +5,6 @@
 목표·완료 기준을 합의하고, 업무를 나눠 체크인하면 서버가 남은 공수로 일정을 다시 계산해 병목을 보여준다. 끝나면 팀원끼리 동료평가를 하고 등급·뱃지가 마이페이지와 공개 프로필에 쌓인다. 연구가 아니라 서비스 개발이 목적이다.
 
 - **운영 주소:** https://projectmate-parkhyuns1ks-projects.vercel.app
-  (`projectmate.vercel.app`은 다른 사람의 사이트다.) `main` 머지 = 운영, PR = 미리보기 배포.
-- 웹 서비스는 [`web/`](web/)(Next.js + Postgres)이다. 루트의 Python 코드(`server/`, `careerflow/`)는 보존된 별도 구현이며 웹에서 호출하지 않는다.
 
 ## 지금 되는 것
 
