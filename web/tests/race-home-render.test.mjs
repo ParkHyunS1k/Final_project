@@ -239,6 +239,31 @@ void test('끝난 프로젝트: 상단 시계와 캘린더 현재 막대가 움�
   assert.match(renderToString(createElement(DeadlineCalendar, { ...props, active: true })), /calendar-now/);
 });
 
+void test('기간(3~7일, 예전 10일)에 맞춰 캘린더 칸·열 수와 상단 시계가 바뀐다', () => {
+  for (const days of [3, 5, 7, 10]) {
+    const startedAt = new Date(NOW).toISOString();
+    const deadline = new Date(NOW + days * 24 * H).toISOString();
+    const html = renderToString(
+      createElement(DeadlineCalendar, { startedAt, deadline, now: NOW, tasks: [], people: [], active: true }),
+    );
+    assert.equal((html.match(/class="calendar-day/g) ?? []).length, days);
+    const bare = html.replace(/<!-- -->/g, '');
+    assert.match(bare, new RegExp(`<b>Day ${days}</b>`));
+    assert.doesNotMatch(bare, new RegExp(`<b>Day ${days + 1}</b>`));
+    // 열은 기간만큼, 7일이 넘는 예전 프로젝트는 7열로 줄바꿈한다.
+    assert.match(html, new RegExp(`--calendar-cols:${Math.min(days, 7)}`));
+    const clock = renderToString(
+      createElement(RaceClock, { lifecycle: 'active', deadline, asOf: startedAt, durationDays: days, onZero: () => {} }),
+    );
+    assert.match(text(clock), new RegExp(`${String(days * 24).padStart(2, '0')}:00:00`));
+    const idle = renderToString(
+      createElement(RaceClock, { lifecycle: 'draft', deadline: null, asOf: startedAt, durationDays: days, onZero: () => {} }),
+    );
+    assert.match(text(idle), new RegExp(`${days}일 · 시작 전`));
+  }
+  assert.match(rule('.calendar-grid'), /repeat\(var\(--calendar-cols, 7\)/);
+});
+
 void test('캘린더 칩: 마감 초과는 빨강, 완료는 취소선', () => {
   assert.match(rule('.deadline-card.late'), /--red-/);
   assert.doesNotMatch(rule('.deadline-card.late'), /--heat-/);

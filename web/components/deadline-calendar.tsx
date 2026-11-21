@@ -1,4 +1,5 @@
 import { CalendarDays, Check, Flag } from 'lucide-react';
+import type { CSSProperties } from 'react';
 import { deadlineDays, seoulTime, type Task as ServerTask } from '@/lib/sprint';
 import type { Wire } from '@/lib/wire';
 import { chipStage, dayProgress } from '@/lib/race';
@@ -50,7 +51,11 @@ export function DeadlineCalendar({
         </p>
       ) : (
         <>
-          <ol className="calendar-grid">
+          {/* 열은 기간(3~7일)만큼, 7일이 넘는 예전 프로젝트는 7열로 줄바꿈한다. */}
+          <ol
+            className="calendar-grid"
+            style={{ '--calendar-cols': Math.min(calendar.days.length, 7) } as CSSProperties}
+          >
             {calendar.days.map((d) => {
               const start = Date.parse(d.start);
               const when =
