@@ -1,7 +1,8 @@
 // 집중 스프린트 운영 규칙. 준비/진행/종료 상태와 모든 사용자 변경의 공통 검사를 소유한다.
 // 규칙 근거: docs/superpowers/specs/2026-09-09-spartan-sprint-design.md
-// 사용자 결정(2026-09-15): 7일 고정. 이전에 만든 8~10일 프로젝트는 저장된 duration_days를 그대로 쓴다.
-export const DURATIONS = [7] as const;
+// 사용자 결정(2026-11-21): 만들 때 3~7일 중 고른다(2026-09-15~11-20은 7일 고정).
+// 이전에 만든 8~10일 프로젝트는 저장된 duration_days를 그대로 쓴다.
+export const DURATIONS = [3, 4, 5, 6, 7] as const;
 // 솔로플레이(2026-10-14): 팀장 혼자서도 시작한다. 시작 후 초대·합류는 그대로 허용한다.
 export const MIN_MEMBERS = 1;
 export const MAX_MEMBERS = 4;
@@ -92,7 +93,7 @@ export function assertDuration(value: unknown): number {
     typeof value !== 'number' ||
     !DURATIONS.includes(value as (typeof DURATIONS)[number])
   )
-    throw new PolicyError('스프린트 기간은 7일입니다.');
+    throw new PolicyError('스프린트 기간은 3~7일 중에서 고르세요.');
   return value;
 }
 

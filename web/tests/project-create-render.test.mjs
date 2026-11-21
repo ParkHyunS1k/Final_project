@@ -48,6 +48,13 @@ void test('만들기 화면: 단어 3개·잠금 3개·주사위, 3단계 슬라
   assert.doesNotMatch(html, /팀 찾기에 공개하고 모집하기/);
 });
 
+void test('만들기 화면: 기간을 3~7일 중 고르고 기본은 7일', () => {
+  const html = renderToString(createElement(ProjectCreate, { onSubmit: async () => true }));
+  for (const n of [3, 4, 5, 6, 7]) assert.match(html, new RegExp(`>${n}일</`));
+  assert.match(html, /<input[^>]*checked=""[^>]*\/>7일/);
+  assert.match(html, /7일 안에 완성할 프로젝트/);
+});
+
 void test('동료평가 미제출로 금지 중이면 만들기 버튼을 끄고 언제까지인지 알린다', () => {
   const html = renderToString(
     createElement(ProjectCreate, {

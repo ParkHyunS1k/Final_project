@@ -111,6 +111,7 @@ test('새 프로젝트는 비공개라 목록에 없고, 팀장이 공개하면 
       skills: [],
       lifecycle: 'draft',
       goalVersion: 1,
+      durationDays: 7,
       members: 1,
       maxMembers: 4,
       startedAt: null,

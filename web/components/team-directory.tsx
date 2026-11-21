@@ -20,6 +20,7 @@ export type Team = {
   skills: string[];
   lifecycle: 'draft' | 'active';
   goalVersion: number;
+  durationDays: number;
   members: number;
   maxMembers: number;
   startedAt: string | null;
@@ -110,7 +111,7 @@ function TeamTime({ team, now }: { team: Team; now: number }) {
     return (
       <div className="team-time">
         <span>시작 전</span>
-        <b>시작하면 7일</b>
+        <b>{`시작하면 ${team.durationDays}일`}</b>
       </div>
     );
   const left = Date.parse(team.joinUntil) - now;

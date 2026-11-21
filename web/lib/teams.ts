@@ -85,6 +85,7 @@ function teamOf(r: TeamRow, now: Date) {
     skills: skillsOf(r.template),
     lifecycle: policy.lifecycle as 'draft' | 'active',
     goalVersion: policy.goalVersion,
+    durationDays: policy.durationDays,
     members,
     maxMembers: MAX_MEMBERS,
     startedAt: policy.startedAt,

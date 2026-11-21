@@ -11,6 +11,7 @@ import {
   roll,
   type CreateBody,
 } from '@/lib/idea-dice';
+import { DURATIONS } from '@/lib/sprint-policy';
 
 export function ScopeSlider({
   value,
@@ -62,6 +63,7 @@ export function ProjectCreate({
   const [locked, setLocked] = useState([false, false, false]);
   const [idea, setIdea] = useState('');
   const [level, setLevel] = useState(DEFAULT_LEVEL);
+  const [duration, setDuration] = useState(7);
   const [agreed, setAgreed] = useState(false);
   const [mode, setMode] = useState<'solo' | 'team'>('solo');
   const [listed, setListed] = useState(false);
@@ -69,14 +71,13 @@ export function ProjectCreate({
   const current = SCOPE_LEVELS[level - 1];
   return (
     <section className="project-panel">
-      <h1>7일 안에 완성할 프로젝트</h1>
+      <h1>{`${duration}일 안에 완성할 프로젝트`}</h1>
       <p>
         주사위를 굴려 떠오르는 게 있을 때까지 단어를 섞어 보세요. 마음에 드는
         단어는 자물쇠로 고정할 수 있어요.
       </p>
       <p className="tiny muted">
-        만들면 준비 상태로 저장되고, 팀장이 시작한 시각부터 7일이 흐릅니다.
-        혼자서도 시작할 수 있어요.
+        {`만들면 준비 상태로 저장되고, 팀장이 시작한 시각부터 ${duration}일이 흐릅니다. 혼자서도 시작할 수 있어요.`}
       </p>
       <form
         className="project-form"
@@ -84,7 +85,7 @@ export function ProjectCreate({
           e.preventDefault();
           if (busy) return;
           setBusy(true);
-          void onSubmit(createBody({ words, idea, level, agreed, mode, listed })).then((ok) => {
+          void onSubmit(createBody({ words, idea, level, agreed, mode, listed, duration })).then((ok) => {
             if (!ok) setBusy(false);
           });
         }}
@@ -132,6 +133,20 @@ export function ProjectCreate({
             <b>완료 기준</b> {current.criteria}
           </p>
         </div>
+        <fieldset className="hub-mode">
+          <legend>기간</legend>
+          {DURATIONS.map((d) => (
+            <label key={d}>
+              <input
+                type="radio"
+                name="project-duration"
+                checked={duration === d}
+                onChange={() => setDuration(d)}
+              />
+              {`${d}일`}
+            </label>
+          ))}
+        </fieldset>
         <fieldset className="hub-mode">
           <legend>어떻게 시작할까요?</legend>
           {(

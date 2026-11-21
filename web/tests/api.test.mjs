@@ -258,8 +258,8 @@ test('혼자 만든 프로젝트는 바로 시작해 완료 기준 근거와 본
   const done = await change('solo', projectId, 'finish', state);
   assert.equal(done.lifecycle, 'completed');
   assert.match(done.events[0].detail, /완료 기준/);
-  // 기간은 7일 고정이다(2026-09-15). 다른 기간은 생성 단계에서 거절한다.
-  for (const duration of [6, 8, 10])
+  // 기간은 3~7일 정수만 받는다(2026-11-21). 그 밖은 생성 단계에서 거절한다.
+  for (const duration of [2, 8, 10, 3.5, '5', undefined])
     assert.equal(
       (await projectRequest('solo', { ...goalInput, duration })).status,
       400,
@@ -415,6 +415,15 @@ test('시작한 뒤에는 팀장도 목표와 최종 기한을 바꿀 수 없다
   assert.equal(after.agreement.goal, goalFields.goal);
   assert.equal(after.policy.deadlineAt, state.policy.deadlineAt);
   assert.equal(after.sprint.revision, state.sprint.revision);
+});
+
+test('3일로 만든 프로젝트는 시작 시각부터 3일 뒤가 마감이다', async () => {
+  const { state } = await startedTeam('three', 'threemate', { duration: 3 });
+  assert.equal(state.policy.durationDays, 3);
+  assert.equal(
+    Date.parse(state.policy.deadlineAt) - Date.parse(state.policy.startedAt),
+    3 * 86400000,
+  );
 });
 
 test('8~10일로 만든 기존 준비 중 프로젝트도 목표를 고칠 수 있고 기간은 그대로 남는다', async () => {

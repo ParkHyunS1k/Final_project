@@ -63,6 +63,7 @@ const team = (over = {}) => ({
   skills: ['python', 'api'],
   lifecycle: 'active',
   goalVersion: 2,
+  durationDays: 7,
   members: 3,
   maxMembers: 4,
   startedAt: '2026-11-16T05:00:00.000Z',
@@ -90,6 +91,10 @@ void test('팀 카드: 상태·DAY·인원 점·기술 태그·남은 신청 시
   );
   assert.match(draft, /준비 중/);
   assert.match(draft, /시작하면 7일/);
+  const short = renderToString(
+    createElement(TeamCard, { team: team({ lifecycle: 'draft', startedAt: null, deadlineAt: null, joinUntil: null, durationDays: 3 }), now, busy: false, restricted: false, onOpen: () => {} }),
+  );
+  assert.match(short, /시작하면 3일/);
   assert.match(draft, /직접 만든 팀/);
   const full = renderToString(createElement(TeamCard, { team: team({ members: 4, joinable: false }), now, busy: false, restricted: false, onOpen: () => {} }));
   assert.match(full, /<button[^>]*disabled=""[^>]*>인원 마감/);

@@ -10,6 +10,7 @@ import {
   levelOf,
 } from '../lib/idea-dice.ts';
 import { SCOPE_LABELS } from '../lib/career/catalog.ts';
+import { DURATIONS } from '../lib/sprint-policy.ts';
 
 function seeded(n: number) {
   return () => (n = (n * 1103515245 + 12345) % 2147483648) / 2147483648;
@@ -94,6 +95,16 @@ void test('범위·완료 기준은 단계 문장, 결과물은 보내지 않고
     assert.ok(!('deliverables' in b));
     assert.ok(b.title.length <= 100 && b.goal.length <= 1000 && b.scope.length <= 2000);
   }
+});
+
+void test('기간은 3~7일 중 고른 값, 없거나 범위 밖이면 7일', () => {
+  const base = { words: ['고양이', '영수증', '지도'], idea: '', level: 2, agreed: true };
+  const b = createBody({ ...base, duration: 3 });
+  assert.equal(b.duration, 3);
+  assert.equal(b.goal, "'고양이·영수증·지도' 조합에서 떠올린 서비스를 3일 안에 만든다");
+  assert.equal(createBody(base).duration, 7);
+  assert.equal(createBody({ ...base, duration: 9 }).duration, 7);
+  assert.deepEqual([...DURATIONS], [3, 4, 5, 6, 7]);
 });
 
 void test('팀으로 시작하고 공개를 고를 때만 팀 찾기에 공개한다', () => {

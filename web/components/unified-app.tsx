@@ -202,7 +202,7 @@ function ProjectTime({
   }, []);
   if (!start || !end)
     return (
-      <p className="hub-note">준비 중 · 시작하기를 누르면 7일이 흘러가요.</p>
+      <p className="hub-note">준비 중 · 시작하기를 누르면 기간이 흘러가요.</p>
     );
   const remaining = Math.max(0, Date.parse(end) - (now ?? Date.parse(start)));
   const progress = Math.min(
@@ -212,7 +212,7 @@ function ProjectTime({
   return (
     <div className="hub-time">
       <div>
-        <span>7일의 여정</span>
+        <span>{`${Math.round((Date.parse(end) - Date.parse(start)) / 86400000)}일의 여정`}</span>
         <b>
           {now === null
             ? '시간 확인 중'

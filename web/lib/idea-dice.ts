@@ -1,4 +1,5 @@
 // 만들기 화면의 주사위 단어와 기능 범위 3단계. AI 없이 단어 조합으로 아이디어를 떠올리게 한다.
+import { DURATIONS } from './sprint-policy.ts';
 
 export const WORDS: readonly string[] = [
   '우산', '영수증', '지도', '냉장고', '자전거', '열쇠', '안경', '이어폰', '달력', '텀블러',
@@ -73,7 +74,7 @@ export type CreateBody = {
   goal: string;
   scope: string;
   completionCriteria: string;
-  duration: 7;
+  duration: number;
   agreed: boolean;
   /** 팀으로 시작하고 팀 찾기 공개에 동의했을 때만 true. */
   listed: boolean;
@@ -97,16 +98,18 @@ export function createBody(input: {
   agreed: boolean;
   mode?: 'solo' | 'team';
   listed?: boolean;
+  duration?: number;
 }): CreateBody {
   const idea = input.idea.trim();
   const level = clampLevel(input.level);
+  const days = DURATIONS.find((d) => d === input.duration) ?? 7;
   return {
     action: 'create',
     title: idea ? idea.slice(0, 100) : input.words.join(' · '),
-    goal: idea || `'${input.words.join('·')}' 조합에서 떠올린 서비스를 7일 안에 만든다`,
+    goal: idea || `'${input.words.join('·')}' 조합에서 떠올린 서비스를 ${days}일 안에 만든다`,
     scope: scopeText(level),
     completionCriteria: SCOPE_LEVELS[level - 1].criteria,
-    duration: 7,
+    duration: days,
     agreed: input.agreed,
     listed: input.mode === 'team' && input.listed === true,
   };
